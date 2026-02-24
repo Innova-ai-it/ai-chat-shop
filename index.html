@@ -1,0 +1,1639 @@
+<!DOCTYPE html>
+<html lang="it">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Customer Service Dashboard</title>
+  <!-- Supabase JS Client via CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+  <style>
+    /* ============================================================
+       RESET & VARIABILI
+    ============================================================ */
+    *,
+    *::before,
+    *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    :root {
+      --primary: #2563eb;
+      --primary-dark: #1d4ed8;
+      --sidebar-w: 320px;
+      --header-h: 60px;
+      --bg: #f1f5f9;
+      --surface: #ffffff;
+      --border: #e2e8f0;
+      --text: #1e293b;
+      --text-muted: #64748b;
+      --success: #22c55e;
+      --danger: #ef4444;
+      --warning: #f59e0b;
+      --escalation: #dc2626;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      height: 100vh;
+      overflow: hidden;
+    }
+
+    /* ============================================================
+       SCHERMATA LOGIN
+    ============================================================ */
+    #screen-login {
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: linear-gradient(135deg, #1e3a8a 0%, #2563eb 50%, #3b82f6 100%);
+    }
+
+    .login-card {
+      background: var(--surface);
+      border-radius: 20px;
+      padding: 48px 40px;
+      width: 100%;
+      max-width: 420px;
+      box-shadow: 0 25px 60px rgba(0, 0, 0, 0.25);
+    }
+
+    .login-logo {
+      text-align: center;
+      margin-bottom: 32px;
+    }
+
+    .login-logo .logo-icon {
+      width: 64px;
+      height: 64px;
+      background: var(--primary);
+      border-radius: 16px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 28px;
+      margin-bottom: 16px;
+    }
+
+    .login-logo h1 {
+      font-size: 22px;
+      font-weight: 700;
+      color: var(--text);
+    }
+
+    .login-logo p {
+      color: var(--text-muted);
+      font-size: 14px;
+      margin-top: 4px;
+    }
+
+    .form-group {
+      margin-bottom: 18px;
+    }
+
+    .form-group label {
+      display: block;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text);
+      margin-bottom: 6px;
+    }
+
+    .form-group input {
+      width: 100%;
+      padding: 11px 14px;
+      border: 1.5px solid var(--border);
+      border-radius: 10px;
+      font-size: 14px;
+      outline: none;
+      transition: border-color .2s;
+    }
+
+    .form-group input:focus {
+      border-color: var(--primary);
+    }
+
+    .btn-primary {
+      width: 100%;
+      padding: 13px;
+      background: var(--primary);
+      color: #fff;
+      border: none;
+      border-radius: 10px;
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background .15s, transform .1s;
+      margin-top: 8px;
+    }
+
+    .btn-primary:hover {
+      background: var(--primary-dark);
+    }
+
+    .btn-primary:active {
+      transform: scale(0.99);
+    }
+
+    .btn-primary:disabled {
+      opacity: .6;
+      cursor: not-allowed;
+    }
+
+    #login-error {
+      background: #fef2f2;
+      border: 1px solid #fecaca;
+      color: #b91c1c;
+      padding: 10px 14px;
+      border-radius: 8px;
+      font-size: 13px;
+      margin-top: 12px;
+      display: none;
+    }
+
+    /* ============================================================
+       LAYOUT PRINCIPALE
+    ============================================================ */
+    #screen-app {
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* Header */
+    #app-header {
+      height: var(--header-h);
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      padding: 0 20px;
+      gap: 16px;
+      flex-shrink: 0;
+      z-index: 100;
+    }
+
+    .header-logo {
+      font-size: 18px;
+      font-weight: 700;
+      color: var(--primary);
+    }
+
+    .header-logo span {
+      color: var(--text-muted);
+      font-weight: 400;
+      font-size: 14px;
+      margin-left: 8px;
+    }
+
+    #header-tabs {
+      display: flex;
+      gap: 4px;
+      margin-left: auto;
+    }
+
+    .tab-btn {
+      padding: 6px 16px;
+      border-radius: 8px;
+      border: none;
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 500;
+      background: transparent;
+      color: var(--text-muted);
+      transition: background .15s, color .15s;
+    }
+
+    .tab-btn.active {
+      background: var(--primary);
+      color: #fff;
+    }
+
+    .tab-btn:hover:not(.active) {
+      background: var(--bg);
+    }
+
+    #header-user {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      color: var(--text-muted);
+      font-size: 13px;
+    }
+
+    #header-user strong {
+      color: var(--text);
+    }
+
+    .btn-logout {
+      padding: 6px 14px;
+      border-radius: 8px;
+      border: 1.5px solid var(--border);
+      background: transparent;
+      color: var(--text-muted);
+      cursor: pointer;
+      font-size: 12px;
+      transition: border-color .15s, color .15s;
+    }
+
+    .btn-logout:hover {
+      border-color: var(--danger);
+      color: var(--danger);
+    }
+
+    /* Body layout */
+    #app-body {
+      flex: 1;
+      display: flex;
+      overflow: hidden;
+    }
+
+    /* ============================================================
+       SIDEBAR CONVERSAZIONI
+    ============================================================ */
+    #sidebar {
+      width: var(--sidebar-w);
+      flex-shrink: 0;
+      background: var(--surface);
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    #sidebar-header {
+      padding: 16px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    #sidebar-header h2 {
+      font-size: 14px;
+      font-weight: 700;
+    }
+
+    #sidebar-badge {
+      background: var(--escalation);
+      color: #fff;
+      border-radius: 12px;
+      padding: 2px 10px;
+      font-size: 12px;
+      font-weight: 700;
+      display: none;
+    }
+
+    #sidebar-badge.visible {
+      display: inline;
+    }
+
+    #sidebar-filter {
+      padding: 10px 16px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      gap: 6px;
+    }
+
+    .filter-btn {
+      padding: 4px 12px;
+      border-radius: 20px;
+      border: 1.5px solid var(--border);
+      background: transparent;
+      font-size: 12px;
+      cursor: pointer;
+      transition: all .15s;
+    }
+
+    .filter-btn.active {
+      background: var(--primary);
+      border-color: var(--primary);
+      color: #fff;
+    }
+
+    #conv-list {
+      flex: 1;
+      overflow-y: auto;
+    }
+
+    #conv-list::-webkit-scrollbar {
+      width: 4px;
+    }
+
+    #conv-list::-webkit-scrollbar-thumb {
+      background: var(--border);
+      border-radius: 4px;
+    }
+
+    .conv-item {
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--border);
+      cursor: pointer;
+      transition: background .1s;
+      position: relative;
+    }
+
+    .conv-item:hover {
+      background: var(--bg);
+    }
+
+    .conv-item.active {
+      background: #eff6ff;
+      border-right: 3px solid var(--primary);
+    }
+
+    .conv-item-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 4px;
+    }
+
+    .conv-item-name {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text);
+    }
+
+    .conv-item-time {
+      font-size: 11px;
+      color: var(--text-muted);
+    }
+
+    .conv-item-preview {
+      font-size: 12px;
+      color: var(--text-muted);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      margin-bottom: 6px;
+    }
+
+    .conv-item-footer {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .badge {
+      padding: 2px 8px;
+      border-radius: 10px;
+      font-size: 11px;
+      font-weight: 600;
+    }
+
+    .badge-escalation {
+      background: #fef2f2;
+      color: var(--escalation);
+      border: 1px solid #fecaca;
+    }
+
+    .badge-ai {
+      background: #eff6ff;
+      color: var(--primary);
+      border: 1px solid #bfdbfe;
+    }
+
+    .badge-chiusa {
+      background: #f8fafc;
+      color: var(--text-muted);
+      border: 1px solid var(--border);
+    }
+
+    .badge-canale {
+      background: var(--bg);
+      color: var(--text-muted);
+      border: 1px solid var(--border);
+    }
+
+    #conv-empty {
+      padding: 48px 24px;
+      text-align: center;
+      color: var(--text-muted);
+      font-size: 14px;
+    }
+
+    #conv-empty .empty-icon {
+      font-size: 40px;
+      margin-bottom: 12px;
+    }
+
+    /* ============================================================
+       AREA CONVERSAZIONE
+    ============================================================ */
+    #main-area {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    #conv-placeholder {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      color: var(--text-muted);
+    }
+
+    #conv-placeholder .ph-icon {
+      font-size: 64px;
+      margin-bottom: 16px;
+    }
+
+    #conv-placeholder h3 {
+      font-size: 18px;
+      font-weight: 600;
+      color: var(--text);
+      margin-bottom: 8px;
+    }
+
+    #conv-placeholder p {
+      font-size: 14px;
+    }
+
+    /* Dettaglio conversazione */
+    #conv-detail {
+      flex: 1;
+      display: none;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    #conv-detail.visible {
+      display: flex;
+    }
+
+    #conv-info {
+      padding: 16px 24px;
+      border-bottom: 1px solid var(--border);
+      background: var(--surface);
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    #conv-info-text {
+      flex: 1;
+    }
+
+    #conv-info-email {
+      font-size: 15px;
+      font-weight: 600;
+    }
+
+    #conv-info-meta {
+      font-size: 12px;
+      color: var(--text-muted);
+      margin-top: 2px;
+    }
+
+    #conv-info-actions {
+      display: flex;
+      gap: 8px;
+    }
+
+    .btn-action {
+      padding: 6px 14px;
+      border-radius: 8px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all .15s;
+      border: 1.5px solid var(--border);
+      background: transparent;
+    }
+
+    .btn-chiudi {
+      color: var(--text-muted);
+    }
+
+    .btn-chiudi:hover {
+      border-color: var(--text-muted);
+      background: var(--bg);
+    }
+
+    #conv-messages {
+      flex: 1;
+      overflow-y: auto;
+      padding: 20px 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      background: var(--bg);
+    }
+
+    #conv-messages::-webkit-scrollbar {
+      width: 4px;
+    }
+
+    #conv-messages::-webkit-scrollbar-thumb {
+      background: var(--border);
+      border-radius: 4px;
+    }
+
+    .msg-row {
+      display: flex;
+      flex-direction: column;
+      max-width: 70%;
+    }
+
+    .msg-row.utente {
+      align-self: flex-end;
+      align-items: flex-end;
+    }
+
+    .msg-row.assistente,
+    .msg-row.operatore {
+      align-self: flex-start;
+      align-items: flex-start;
+    }
+
+    .msg-label {
+      font-size: 11px;
+      color: var(--text-muted);
+      margin-bottom: 4px;
+      font-weight: 500;
+    }
+
+    .msg-bubble {
+      padding: 10px 14px;
+      border-radius: 16px;
+      font-size: 14px;
+      line-height: 1.55;
+      word-wrap: break-word;
+      white-space: pre-wrap;
+    }
+
+    .msg-row.utente .msg-bubble {
+      background: #dbeafe;
+      color: #1e3a8a;
+      border-bottom-right-radius: 4px;
+    }
+
+    .msg-row.assistente .msg-bubble {
+      background: var(--surface);
+      color: var(--text);
+      border-bottom-left-radius: 4px;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+    }
+
+    .msg-row.operatore .msg-bubble {
+      background: #dcfce7;
+      color: #14532d;
+      border-bottom-left-radius: 4px;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+    }
+
+    .msg-time {
+      font-size: 10px;
+      color: #cbd5e1;
+      margin-top: 4px;
+    }
+
+    #conv-reply {
+      padding: 16px 24px;
+      border-top: 1px solid var(--border);
+      background: var(--surface);
+      flex-shrink: 0;
+      display: flex;
+      gap: 12px;
+      align-items: flex-end;
+    }
+
+    #reply-input {
+      flex: 1;
+      border: 1.5px solid var(--border);
+      border-radius: 12px;
+      padding: 10px 14px;
+      font-size: 14px;
+      outline: none;
+      resize: none;
+      max-height: 120px;
+      min-height: 44px;
+      font-family: inherit;
+      transition: border-color .2s;
+    }
+
+    #reply-input:focus {
+      border-color: var(--primary);
+    }
+
+    #btn-send-reply {
+      padding: 10px 22px;
+      background: var(--primary);
+      color: #fff;
+      border: none;
+      border-radius: 10px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background .15s;
+      white-space: nowrap;
+    }
+
+    #btn-send-reply:hover {
+      background: var(--primary-dark);
+    }
+
+    #btn-send-reply:disabled {
+      opacity: .5;
+      cursor: not-allowed;
+    }
+
+    /* ============================================================
+       VISTA ADMIN
+    ============================================================ */
+    #admin-view {
+      flex: 1;
+      overflow-y: auto;
+      padding: 28px;
+      display: none;
+    }
+
+    #admin-view.visible {
+      display: block;
+    }
+
+    .admin-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 24px;
+    }
+
+    .admin-header h2 {
+      font-size: 20px;
+      font-weight: 700;
+    }
+
+    .btn-add {
+      padding: 9px 18px;
+      background: var(--primary);
+      color: #fff;
+      border: none;
+      border-radius: 10px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .btn-add:hover {
+      background: var(--primary-dark);
+    }
+
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 16px;
+      margin-bottom: 28px;
+    }
+
+    .stat-card {
+      background: var(--surface);
+      border-radius: 14px;
+      padding: 20px;
+      border: 1px solid var(--border);
+    }
+
+    .stat-card .stat-label {
+      font-size: 12px;
+      color: var(--text-muted);
+      font-weight: 500;
+      margin-bottom: 8px;
+    }
+
+    .stat-card .stat-value {
+      font-size: 28px;
+      font-weight: 700;
+      color: var(--text);
+    }
+
+    .stat-card .stat-sub {
+      font-size: 12px;
+      color: var(--text-muted);
+      margin-top: 4px;
+    }
+
+    .negozi-table {
+      background: var(--surface);
+      border-radius: 14px;
+      border: 1px solid var(--border);
+      overflow: hidden;
+    }
+
+    .table-header {
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--border);
+      font-size: 14px;
+      font-weight: 700;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    th {
+      padding: 12px 20px;
+      text-align: left;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-muted);
+      background: var(--bg);
+      border-bottom: 1px solid var(--border);
+    }
+
+    td {
+      padding: 14px 20px;
+      font-size: 13px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    tr:last-child td {
+      border-bottom: none;
+    }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      display: inline-block;
+      margin-right: 6px;
+    }
+
+    .status-dot.attivo {
+      background: var(--success);
+    }
+
+    .status-dot.inattivo {
+      background: var(--text-muted);
+    }
+
+    /* Modal aggiungi negozio */
+    #modal-negozio {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.4);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+    }
+
+    #modal-negozio.visible {
+      display: flex;
+    }
+
+    .modal-card {
+      background: var(--surface);
+      border-radius: 16px;
+      padding: 32px;
+      width: 500px;
+      max-width: 95vw;
+      box-shadow: 0 25px 60px rgba(0, 0, 0, 0.2);
+    }
+
+    .modal-card h3 {
+      font-size: 18px;
+      font-weight: 700;
+      margin-bottom: 20px;
+    }
+
+    .modal-footer {
+      display: flex;
+      gap: 10px;
+      justify-content: flex-end;
+      margin-top: 20px;
+    }
+
+    .btn-cancel {
+      padding: 9px 18px;
+      border: 1.5px solid var(--border);
+      border-radius: 8px;
+      background: transparent;
+      cursor: pointer;
+      font-size: 13px;
+    }
+
+    .btn-save {
+      padding: 9px 18px;
+      background: var(--primary);
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    /* Toast notifiche */
+    #toast-container {
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      z-index: 9999;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .toast {
+      background: var(--surface);
+      border-left: 4px solid var(--success);
+      border-radius: 8px;
+      padding: 12px 16px;
+      font-size: 13px;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+      animation: slideIn .3s ease;
+      min-width: 260px;
+    }
+
+    .toast.error {
+      border-color: var(--danger);
+    }
+
+    @keyframes slideIn {
+      from {
+        transform: translateX(100%);
+        opacity: 0;
+      }
+
+      to {
+        transform: translateX(0);
+        opacity: 1;
+      }
+    }
+
+    /* Loading spinner */
+    .spinner {
+      display: inline-block;
+      width: 16px;
+      height: 16px;
+      border: 2px solid rgba(255, 255, 255, 0.3);
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: spin .7s linear infinite;
+    }
+
+    @keyframes spin {
+      to {
+        transform: rotate(360deg);
+      }
+    }
+
+    /* Skeleton loading */
+    .skeleton {
+      background: linear-gradient(90deg, var(--bg) 25%, var(--border) 50%, var(--bg) 75%);
+      background-size: 200% 100%;
+      animation: shimmer 1.5s infinite;
+      border-radius: 6px;
+    }
+
+    @keyframes shimmer {
+      0% {
+        background-position: 200% 0;
+      }
+
+      100% {
+        background-position: -200% 0;
+      }
+    }
+  </style>
+</head>
+
+<body>
+
+  <!-- ============================================================
+     TOAST CONTAINER
+============================================================ -->
+  <div id="toast-container"></div>
+
+  <!-- ============================================================
+     SCREEN: LOGIN
+============================================================ -->
+  <div id="screen-login">
+    <div class="login-card">
+      <div class="login-logo">
+        <div class="logo-icon">💬</div>
+        <h1>Customer Service</h1>
+        <p>Dashboard Operatori</p>
+      </div>
+      <form id="login-form" autocomplete="on">
+        <div class="form-group">
+          <label for="login-email">Email</label>
+          <input type="email" id="login-email" placeholder="operatore@negozio.com" required autocomplete="email" />
+        </div>
+        <div class="form-group">
+          <label for="login-password">Password</label>
+          <input type="password" id="login-password" placeholder="••••••••" required autocomplete="current-password" />
+        </div>
+        <button type="submit" class="btn-primary" id="login-btn">Accedi</button>
+        <div id="login-error"></div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ============================================================
+     SCREEN: APP
+============================================================ -->
+  <div id="screen-app" style="display:none;">
+
+    <!-- Header -->
+    <div id="app-header">
+      <div class="header-logo">💬 CS Dashboard <span id="header-negozio"></span></div>
+      <div id="header-tabs">
+        <button class="tab-btn active" data-tab="conversations">Conversazioni</button>
+        <button class="tab-btn" data-tab="admin" id="tab-admin" style="display:none;">Admin</button>
+      </div>
+      <div id="header-user">
+        Ciao, <strong id="header-user-name">—</strong>
+        <button class="btn-logout" id="btn-logout">Esci</button>
+      </div>
+    </div>
+
+    <!-- Body -->
+    <div id="app-body">
+
+      <!-- SIDEBAR -->
+      <div id="sidebar">
+        <div id="sidebar-header">
+          <h2>Conversazioni <span id="sidebar-badge" class="badge badge-escalation"></span></h2>
+        </div>
+        <div id="sidebar-filter">
+          <button class="filter-btn active" data-filter="escalation">In attesa</button>
+          <button class="filter-btn" data-filter="all">Tutte</button>
+          <button class="filter-btn" data-filter="chiusa">Chiuse</button>
+        </div>
+        <div id="conv-list">
+          <div id="conv-empty">
+            <div class="empty-icon">🎉</div>
+            <div>Nessuna conversazione in attesa</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- MAIN AREA - Conversations Tab -->
+      <div id="main-area">
+        <div id="conv-placeholder">
+          <div class="ph-icon">💬</div>
+          <h3>Seleziona una conversazione</h3>
+          <p>Clicca su una conversazione nella sidebar per iniziare</p>
+        </div>
+        <div id="conv-detail">
+          <div id="conv-info">
+            <div id="conv-info-text">
+              <div id="conv-info-email">—</div>
+              <div id="conv-info-meta">—</div>
+            </div>
+            <div id="conv-info-actions">
+              <button class="btn-action btn-chiudi" id="btn-chiudi-conv">Chiudi sessione</button>
+            </div>
+          </div>
+          <div id="conv-messages"></div>
+          <div id="conv-reply">
+            <textarea id="reply-input" rows="1" placeholder="Scrivi una risposta..."></textarea>
+            <button id="btn-send-reply">Invia risposta</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ADMIN VIEW -->
+      <div id="admin-view">
+        <div class="admin-header">
+          <h2>Gestione Negozi</h2>
+          <button class="btn-add" id="btn-add-negozio">+ Aggiungi Negozio</button>
+        </div>
+        <div class="stats-grid" id="admin-stats">
+          <div class="stat-card">
+            <div class="stat-label">Negozi Attivi</div>
+            <div class="stat-value" id="stat-negozi">—</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Conversazioni Oggi</div>
+            <div class="stat-value" id="stat-conv">—</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">In Escalation</div>
+            <div class="stat-value" id="stat-esc">—</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Tasso Risoluzione AI</div>
+            <div class="stat-value" id="stat-ai">—</div>
+            <div class="stat-sub">% risolte senza operatore</div>
+          </div>
+        </div>
+        <div class="negozi-table">
+          <div class="table-header">Lista Negozi</div>
+          <table>
+            <thead>
+              <tr>
+                <th>Nome</th>
+                <th>Shopify URL</th>
+                <th>Email Titolare</th>
+                <th>Stato</th>
+                <th>Conv. Totali</th>
+                <th>Escalation</th>
+              </tr>
+            </thead>
+            <tbody id="negozi-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+
+    </div><!-- /app-body -->
+  </div><!-- /screen-app -->
+
+  <!-- Modal Aggiungi Negozio -->
+  <div id="modal-negozio">
+    <div class="modal-card">
+      <h3>➕ Nuovo Negozio</h3>
+      <form id="form-negozio">
+        <div class="form-group"><label>Nome Negozio *</label><input type="text" id="n-nome" required /></div>
+        <div class="form-group"><label>Shopify URL</label><input type="text" id="n-shopify"
+            placeholder="mio-negozio.myshopify.com" /></div>
+        <div class="form-group"><label>Email Titolare</label><input type="email" id="n-email" /></div>
+        <div class="form-group"><label>Google Doc ID (manuale)</label><input type="text" id="n-gdoc" /></div>
+        <div class="form-group"><label>Shopify API Key</label><input type="text" id="n-apikey" /></div>
+        <div class="modal-footer">
+          <button type="button" class="btn-cancel" id="btn-cancel-modal">Annulla</button>
+          <button type="submit" class="btn-save">Salva Negozio</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script>
+    // ================================================================
+    // CONFIGURAZIONE — modifica questi valori
+    // ================================================================
+    var SUPABASE_URL = 'https://qpkamevovisplbmxcjae.supabase.co';
+    var SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFwa2FtZXZvdmlzcGxibXhjamFlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE0ODk4MzksImV4cCI6MjA4NzA2NTgzOX0.6RzhpKdUH3gqnH5tF-VZdvp33AFDhDw5V0UiAdMg0FI';
+    var N8N_WEBHOOK_URL = 'https://n8n.srv1289851.hstgr.cloud';   // senza slash finale
+    var ADMIN_EMAIL = 'giovanniecomdesign@gmail.com';      // il tuo account admin
+
+    // ================================================================
+    // STATO APP
+    // ================================================================
+    var supabase;
+    var currentUser = null;
+    var currentNegozioId = null;
+    var isAdmin = false;
+    var activeSession = null;
+    var activeFilter = 'escalation';
+    var allSessions = [];
+    var refreshTimer = null;
+    var sessionSubscription = null;
+    var messagesSubscription = null;
+
+    // ================================================================
+    // INIT
+    // ================================================================
+    document.addEventListener('DOMContentLoaded', function () {
+      supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+      checkSession();
+      bindStaticEvents();
+    });
+
+    function checkSession() {
+      supabase.auth.getSession().then(function (res) {
+        if (res.data && res.data.session) {
+          onLogin(res.data.session.user);
+        }
+      });
+    }
+
+    // ================================================================
+    // LOGIN
+    // ================================================================
+    document.getElementById('login-form').addEventListener('submit', function (e) {
+      e.preventDefault();
+      var email = document.getElementById('login-email').value.trim();
+      var password = document.getElementById('login-password').value;
+      var btn = document.getElementById('login-btn');
+      var errEl = document.getElementById('login-error');
+
+      btn.disabled = true;
+      btn.innerHTML = '<span class="spinner"></span>';
+      errEl.style.display = 'none';
+
+      supabase.auth.signInWithPassword({ email: email, password: password })
+        .then(function (res) {
+          btn.disabled = false;
+          btn.textContent = 'Accedi';
+          if (res.error) {
+            errEl.textContent = 'Credenziali non valide. Controlla email e password.';
+            errEl.style.display = 'block';
+          } else {
+            onLogin(res.data.user);
+          }
+        });
+    });
+
+    function onLogin(user) {
+      currentUser = user;
+      document.getElementById('screen-login').style.display = 'none';
+      document.getElementById('screen-app').style.display = 'flex';
+      document.getElementById('header-user-name').textContent = user.email.split('@')[0];
+
+      // Controlla se admin (case insensitive)
+      isAdmin = (user.email.toLowerCase() === ADMIN_EMAIL.toLowerCase());
+      if (isAdmin) {
+        document.getElementById('tab-admin').style.display = 'inline';
+      }
+
+      // Carica negozio corrente
+      loadUserNegozio();
+    }
+
+    document.getElementById('btn-logout').addEventListener('click', function () {
+      supabase.auth.signOut().then(function () {
+        location.reload();
+      });
+    });
+
+    // ================================================================
+    // CARICA NEGOZIO UTENTE
+    // ================================================================
+    function loadUserNegozio() {
+      supabase
+        .from('operatori')
+        .select('negozio_id, ruolo, negozi(nome)')
+        .eq('user_id', currentUser.id)
+        .single()
+        .then(function (res) {
+          if (res.data) {
+            currentNegozioId = res.data.negozio_id;
+            var nomeName = res.data.negozi ? res.data.negozi.nome : '';
+            document.getElementById('header-negozio').textContent = nomeName ? '— ' + nomeName : '';
+          }
+          startApp();
+        });
+    }
+
+    // ================================================================
+    // AVVIA DASHBOARD
+    // ================================================================
+    function startApp() {
+      loadConversations();
+      refreshTimer = setInterval(loadConversations, 10000); // auto-refresh 10s
+
+      if (isAdmin) {
+        loadAdminStats();
+      }
+
+      setupRealtime();
+    }
+
+    // ================================================================
+    // REALTIME SETUP
+    // ================================================================
+    function setupRealtime() {
+      if (sessionSubscription) sessionSubscription.unsubscribe();
+
+      // Sottoscrizione alle sessioni (per vedere nuove escalation o cambi stato)
+      sessionSubscription = supabase
+        .channel('sessioni-changes')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'sessioni' }, function (payload) {
+          console.log('Update sessione:', payload);
+          loadConversations(); // Ricarica la lista per sicurezza
+
+          // Se è il cambio stato della sessione attiva
+          if (activeSession && payload.new && payload.new.session_id === activeSession) {
+            if (payload.new.stato === 'chiusa') {
+              showToast('La sessione è stata chiusa.');
+              activeSession = null;
+              document.getElementById('conv-detail').classList.remove('visible');
+              document.getElementById('conv-placeholder').style.display = 'flex';
+            }
+          }
+        })
+        .subscribe();
+    }
+
+    function setupMessageRealtime(sessionId) {
+      if (messagesSubscription) messagesSubscription.unsubscribe();
+
+      messagesSubscription = supabase
+        .channel('msgs-' + sessionId)
+        .on('postgres_changes', {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'conversazioni',
+          filter: 'session_id=eq.' + sessionId
+        }, function (payload) {
+          console.log('Nuovo messaggio:', payload.new);
+          // Invece di ricaricare tutto, aggiungiamo il singolo messaggio se non c'è già
+          loadMessages(sessionId);
+        })
+        .subscribe();
+    }
+
+    // ================================================================
+    // CARICA CONVERSAZIONI
+    // ================================================================
+    function loadConversations() {
+      var query = supabase
+        .from('sessioni')
+        .select('*')
+        .order('updated_at', { ascending: false });
+
+      if (!isAdmin && currentNegozioId) {
+        query = query.eq('negozio_id', currentNegozioId);
+      }
+
+      if (activeFilter === 'escalation') {
+        query = query.eq('stato', 'escalation');
+      } else if (activeFilter === 'chiusa') {
+        query = query.eq('stato', 'chiusa');
+      }
+
+      console.log('Eseguo query conversazioni...', { isAdmin, currentNegozioId, activeFilter });
+
+      query.then(function (res) {
+        if (res.error) {
+          console.error('Errore Supabase:', res.error);
+          return showToast('Errore caricamento: ' + res.error.message, true);
+        }
+        console.log('Sessioni trovate:', res.data);
+        allSessions = res.data || [];
+        renderSidebar(allSessions);
+      });
+    }
+
+    // ================================================================
+    // RENDER SIDEBAR
+    // ================================================================
+    function renderSidebar(sessions) {
+      var list = document.getElementById('conv-list');
+      var badge = document.getElementById('sidebar-badge');
+      var empty = document.getElementById('conv-empty');
+
+      var escalationCount = sessions.filter(function (s) { return s.stato === 'escalation'; }).length;
+      badge.textContent = escalationCount;
+      badge.classList.toggle('visible', escalationCount > 0);
+
+      if (sessions.length === 0) {
+        list.innerHTML = '';
+        if (empty) empty.style.display = 'block';
+        return;
+      }
+
+      if (empty) empty.style.display = 'none';
+      list.innerHTML = '';
+
+      sessions.forEach(function (s) {
+        var lastMsg = '(clicca per vedere i messaggi)';
+        var lastCanale = 'chat';
+        if (lastMsg.length > 55) lastMsg = lastMsg.slice(0, 55) + '…';
+
+        var timeStr = s.updated_at ? new Date(s.updated_at).toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' }) : '';
+        var badgeHtml = '';
+        if (s.stato === 'escalation') badgeHtml = '<span class="badge badge-escalation">⚠ In attesa</span>';
+        else if (s.stato === 'ai') badgeHtml = '<span class="badge badge-ai">🤖 AI</span>';
+        else badgeHtml = '<span class="badge badge-chiusa">✓ Chiusa</span>';
+
+        var canaleBadge = '<span class="badge badge-canale">' + (lastCanale === 'email' ? '✉ Email' : '💬 Chat') + '</span>';
+
+        var clienteLabel = s.email_cliente || s.nome_cliente || 'Cliente anonimo';
+
+        var div = document.createElement('div');
+        div.className = 'conv-item' + (activeSession === s.session_id ? ' active' : '');
+        div.dataset.session = s.session_id;
+        div.innerHTML = [
+          '<div class="conv-item-header">',
+          '<span class="conv-item-name">' + escHtml(clienteLabel) + '</span>',
+          '<span class="conv-item-time">' + timeStr + '</span>',
+          '</div>',
+          '<div class="conv-item-preview">' + escHtml(lastMsg || '(nessun messaggio)') + '</div>',
+          '<div class="conv-item-footer">' + badgeHtml + canaleBadge + '</div>'
+        ].join('');
+
+        div.addEventListener('click', function () {
+          openConversation(s);
+        });
+
+        list.appendChild(div);
+      });
+    }
+
+    // ================================================================
+    // APRI CONVERSAZIONE
+    // ================================================================
+    function openConversation(sessione) {
+      activeSession = sessione.session_id;
+
+      // Aggiorna sidebar highlight
+      document.querySelectorAll('.conv-item').forEach(function (el) {
+        el.classList.toggle('active', el.dataset.session === activeSession);
+      });
+
+      document.getElementById('conv-placeholder').style.display = 'none';
+      var detail = document.getElementById('conv-detail');
+      detail.classList.add('visible');
+
+      // Info cliente
+      var emailLabel = sessione.email_cliente || sessione.nome_cliente || 'Cliente anonimo';
+      document.getElementById('conv-info-email').textContent = emailLabel;
+      document.getElementById('conv-info-meta').textContent =
+        'Sessione: ' + sessione.session_id.slice(0, 20) + '… | Stato: ' + sessione.stato +
+        ' | Aperta: ' + (sessione.created_at ? new Date(sessione.created_at).toLocaleString('it-IT') : '—');
+
+      // Setup Realtime per i messaggi di QUESTA sessione
+      setupMessageRealtime(sessione.session_id);
+
+      // Carica messaggi
+      loadMessages(sessione.session_id, sessione.negozio_id);
+    }
+
+    function loadMessages(sessionId, negozioId) {
+      var msgsEl = document.getElementById('conv-messages');
+      msgsEl.innerHTML = '<div style="text-align:center;padding:20px;color:var(--text-muted)">Caricamento...</div>';
+
+      supabase
+        .from('conversazioni')
+        .select('*')
+        .eq('session_id', sessionId)
+        .order('created_at', { ascending: true })
+        .then(function (res) {
+          if (res.error) return;
+          renderMessages(res.data || []);
+        });
+    }
+
+    function renderMessages(msgs) {
+      var el = document.getElementById('conv-messages');
+      el.innerHTML = '';
+
+      if (msgs.length === 0) {
+        el.innerHTML = '<div style="text-align:center;padding:20px;color:var(--text-muted)">Nessun messaggio</div>';
+        return;
+      }
+
+      msgs.forEach(function (msg) {
+        var row = document.createElement('div');
+        var ruolo = msg.ruolo === 'assistente' ? 'assistente' : msg.ruolo;
+        row.className = 'msg-row ' + ruolo;
+        var labelMap = { utente: '👤 Cliente', assistente: '🤖 AI', operatore: '✉ Operatore' };
+        var timeStr = msg.created_at ? new Date(msg.created_at).toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' }) : '';
+        row.innerHTML = [
+          '<div class="msg-label">' + (labelMap[ruolo] || ruolo) + '</div>',
+          '<div class="msg-bubble">' + escHtml(msg.messaggio) + '</div>',
+          '<div class="msg-time">' + timeStr + '</div>'
+        ].join('');
+        el.appendChild(row);
+      });
+
+      el.scrollTop = el.scrollHeight;
+    }
+
+    // ================================================================
+    // INVIA RISPOSTA OPERATORE
+    // ================================================================
+    document.getElementById('btn-send-reply').addEventListener('click', sendOperatorReply);
+    document.getElementById('reply-input').addEventListener('keydown', function (e) {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        sendOperatorReply();
+      }
+    });
+
+    function sendOperatorReply() {
+      var input = document.getElementById('reply-input');
+      var btn = document.getElementById('btn-send-reply');
+      var msg = input.value.trim();
+      if (!msg || !activeSession) return;
+
+      btn.disabled = true;
+      btn.textContent = 'Invio...';
+
+      var sessione = allSessions.find(function (s) { return s.session_id === activeSession; });
+      if (!sessione) return;
+
+      fetch(N8N_WEBHOOK_URL + '/webhook/risposta-operatore', {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain' }, // Evita il preflight OPTIONS che causa il blocco CORS su localhost
+        body: JSON.stringify({
+          session_id: activeSession,
+          negozio_id: sessione.negozio_id,
+          messaggio: msg,
+          operatore_id: currentUser.id,
+          chiudi: false
+        })
+      })
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+          btn.disabled = false;
+          btn.textContent = 'Invia risposta';
+          if (data.success) {
+            input.value = '';
+            input.style.height = 'auto';
+            showToast('Risposta inviata con successo');
+            loadMessages(activeSession, sessione.negozio_id);
+            loadConversations();
+          } else {
+            showToast('Errore nell\'invio', true);
+          }
+        })
+        .catch(function (err) {
+          console.error('Errore invio:', err);
+          btn.disabled = false;
+          btn.textContent = 'Invia risposta';
+          showToast('Errore di rete: controlla n8n e ngrok', true);
+        });
+    }
+
+    // Chiudi sessione
+    document.getElementById('btn-chiudi-conv').addEventListener('click', function () {
+      if (!activeSession) return;
+      var sessione = allSessions.find(function (s) { return s.session_id === activeSession; });
+      if (!sessione) return;
+
+      // Usa il webhook per chiudere correttamente (così l'operatore può mandare un ultimo messaggio di chiusura se volesse)
+      // O semplicemente aggiorna Supabase come facevi prima:
+      supabase.from('sessioni')
+        .update({ stato: 'chiusa' })
+        .eq('session_id', activeSession)
+        .then(function (res) {
+          if (!res.error) {
+            showToast('Sessione chiusa');
+            activeSession = null;
+            document.getElementById('conv-detail').classList.remove('visible');
+            document.getElementById('conv-placeholder').style.display = 'flex';
+            loadConversations();
+          }
+        });
+    });
+
+    // Auto-resize textarea
+    document.getElementById('reply-input').addEventListener('input', function () {
+      this.style.height = 'auto';
+      this.style.height = Math.min(this.scrollHeight, 120) + 'px';
+    });
+
+    // ================================================================
+    // ADMIN: STATISTICHE E NEGOZI
+    // ================================================================
+    function loadAdminStats() {
+      // Conta negozi attivi
+      supabase.from('negozi').select('id', { count: 'exact' }).eq('attivo', true)
+        .then(function (r) {
+          document.getElementById('stat-negozi').textContent = r.count || 0;
+        });
+
+      // Conversazioni di oggi
+      var oggi = new Date(); oggi.setHours(0, 0, 0, 0);
+      supabase.from('conversazioni').select('id', { count: 'exact' }).gte('created_at', oggi.toISOString())
+        .then(function (r) {
+          document.getElementById('stat-conv').textContent = r.count || 0;
+        });
+
+      // Escalation attive
+      supabase.from('sessioni').select('id', { count: 'exact' }).eq('stato', 'escalation')
+        .then(function (r) {
+          document.getElementById('stat-esc').textContent = r.count || 0;
+        });
+
+      // Tasso risoluzione AI
+      supabase.from('sessioni').select('stato').then(function (r) {
+        if (!r.data || r.data.length === 0) return;
+        var total = r.data.length;
+        var aiRisolte = r.data.filter(function (s) { return s.stato !== 'escalation'; }).length;
+        document.getElementById('stat-ai').textContent = Math.round(aiRisolte / total * 100) + '%';
+      });
+
+      // Lista negozi
+      supabase.from('negozi').select('*')
+        .then(function (r) {
+          var tbody = document.getElementById('negozi-tbody');
+          tbody.innerHTML = '';
+          if (!r.data) return;
+          r.data.forEach(function (n) {
+            var tr = document.createElement('tr');
+            tr.innerHTML = [
+              '<td><strong>' + escHtml(n.nome) + '</strong></td>',
+              '<td>' + escHtml(n.shopify_url || '—') + '</td>',
+              '<td>' + escHtml(n.email_titolare || '—') + '</td>',
+              '<td><span class="status-dot ' + (n.attivo ? 'attivo' : 'inattivo') + '"></span>' + (n.attivo ? 'Attivo' : 'Inattivo') + '</td>',
+              '<td>—</td>',
+              '<td>—</td>'
+            ].join('');
+            tbody.appendChild(tr);
+          });
+        });
+    }
+
+    // ================================================================
+    // MODAL AGGIUNGI NEGOZIO
+    // ================================================================
+    document.getElementById('btn-add-negozio').addEventListener('click', function () {
+      document.getElementById('modal-negozio').classList.add('visible');
+    });
+    document.getElementById('btn-cancel-modal').addEventListener('click', function () {
+      document.getElementById('modal-negozio').classList.remove('visible');
+    });
+    document.getElementById('modal-negozio').addEventListener('click', function (e) {
+      if (e.target === this) this.classList.remove('visible');
+    });
+
+    document.getElementById('form-negozio').addEventListener('submit', function (e) {
+      e.preventDefault();
+      var data = {
+        nome: document.getElementById('n-nome').value.trim(),
+        shopify_url: document.getElementById('n-shopify').value.trim() || null,
+        email_titolare: document.getElementById('n-email').value.trim() || null,
+        google_doc_id: document.getElementById('n-gdoc').value.trim() || null,
+        shopify_api_key: document.getElementById('n-apikey').value.trim() || null,
+        attivo: true
+      };
+
+      supabase.from('negozi').insert(data).then(function (res) {
+        if (res.error) {
+          showToast('Errore: ' + res.error.message, true);
+        } else {
+          showToast('Negozio aggiunto con successo!');
+          document.getElementById('modal-negozio').classList.remove('visible');
+          document.getElementById('form-negozio').reset();
+          loadAdminStats();
+        }
+      });
+    });
+
+    // ================================================================
+    // TABS
+    // ================================================================
+    function bindStaticEvents() {
+      document.getElementById('header-tabs').addEventListener('click', function (e) {
+        var btn = e.target.closest('.tab-btn');
+        if (!btn) return;
+        var tab = btn.dataset.tab;
+
+        document.querySelectorAll('.tab-btn').forEach(function (b) { b.classList.remove('active'); });
+        btn.classList.add('active');
+
+        var body = document.getElementById('app-body');
+        var sidebar = document.getElementById('sidebar');
+        var mainArea = document.getElementById('main-area');
+        var adminView = document.getElementById('admin-view');
+
+        if (tab === 'conversations') {
+          sidebar.style.display = 'flex';
+          mainArea.style.display = 'flex';
+          adminView.classList.remove('visible');
+        } else if (tab === 'admin') {
+          sidebar.style.display = 'none';
+          mainArea.style.display = 'none';
+          adminView.classList.add('visible');
+          loadAdminStats();
+        }
+      });
+
+      // Filter buttons
+      document.getElementById('sidebar-filter').addEventListener('click', function (e) {
+        var btn = e.target.closest('.filter-btn');
+        if (!btn) return;
+        document.querySelectorAll('.filter-btn').forEach(function (b) { b.classList.remove('active'); });
+        btn.classList.add('active');
+        activeFilter = btn.dataset.filter;
+        loadConversations();
+      });
+    }
+
+    // ================================================================
+    // TOAST
+    // ================================================================
+    function showToast(msg, isError) {
+      var container = document.getElementById('toast-container');
+      var toast = document.createElement('div');
+      toast.className = 'toast' + (isError ? ' error' : '');
+      toast.textContent = (isError ? '❌ ' : '✅ ') + msg;
+      container.appendChild(toast);
+      setTimeout(function () {
+        toast.style.opacity = '0';
+        toast.style.transition = 'opacity .3s';
+        setTimeout(function () { toast.remove(); }, 300);
+      }, 4000);
+    }
+
+    // ================================================================
+    // UTILITY
+    // ================================================================
+    function escHtml(str) {
+      var d = document.createElement('div');
+      d.textContent = String(str || '');
+      return d.innerHTML;
+    }
+  </script>
+</body>
+
+</html>
