@@ -1356,9 +1356,11 @@
       loadMessages(sessione.session_id, sessione.negozio_id);
     }
 
-    function loadMessages(sessionId, negozioId) {
+    function loadMessages(sessionId, negozioId, silent) {
       var msgsEl = document.getElementById('conv-messages');
-      msgsEl.innerHTML = '<div style="text-align:center;padding:20px;color:var(--text-muted)">Caricamento...</div>';
+      if (!silent) {
+        msgsEl.innerHTML = '<div style="text-align:center;padding:20px;color:var(--text-muted)">Caricamento...</div>';
+      }
 
       supabase
         .from('conversazioni')
@@ -1444,7 +1446,7 @@
             input.value = '';
             input.style.height = 'auto';
             showToast('Risposta inviata con successo');
-            loadMessages(activeSession, sessione.negozio_id);
+            loadMessages(activeSession, sessione.negozio_id, true);
           } else {
             showToast('Errore nell\'invio: ' + (data.message || 'Riprova'), true);
           }
@@ -1464,19 +1466,23 @@
       if (!sessione) return;
 
       // Usa il webhook per chiudere correttamente (così l'operatore può mandare un ultimo messaggio di chiusura se volesse)
-      // O semplicemente aggiorna Supabase come facevi prima:
-      supabase.from('sessioni')
-        .update({ stato: 'chiusa' })
-        .eq('session_id', activeSession)
-        .then(function (res) {
-          if (!res.error) {
-            showToast('Sessione chiusa');
-            activeSession = null;
-            document.getElementById('conv-detail').classList.remove('visible');
-            document.getElementById('conv-placeholder').style.display = 'flex';
-            loadConversations();
-          }
-        });
+      fetch(N8N_WEBHOOK_URL + '/webhook/risposta-operatore', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          session_id: activeSession,
+          negozio_id: sessione.negozio_id,
+          messaggio: '⚠️ Sessione chiusa dall\'operatore.',
+          operatore_id: currentUser.id,
+          chiudi: true
+        })
+      }).then(function() {
+        showToast('Sessione chiusa');
+        activeSession = null;
+        document.getElementById('conv-detail').classList.remove('visible');
+        document.getElementById('conv-placeholder').style.display = 'flex';
+        loadConversations();
+      });
     });
 
     // Auto-resize textarea
