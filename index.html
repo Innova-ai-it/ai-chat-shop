@@ -1422,7 +1422,9 @@
 
       fetch(N8N_WEBHOOK_URL + '/webhook/risposta-operatore', {
         method: 'POST',
-        headers: { 'Content-Type': 'text/plain' }, // Evita il preflight OPTIONS che causa il blocco CORS su localhost
+        headers: { 
+          'Content-Type': 'application/json' 
+        },
         body: JSON.stringify({
           session_id: activeSession,
           negozio_id: sessione.negozio_id,
@@ -1431,7 +1433,10 @@
           chiudi: false
         })
       })
-        .then(function (r) { return r.json(); })
+        .then(function (r) { 
+          if (!r.ok) throw new Error('Errore server n8n');
+          return r.json(); 
+        })
         .then(function (data) {
           btn.disabled = false;
           btn.textContent = 'Invia risposta';
@@ -1440,9 +1445,8 @@
             input.style.height = 'auto';
             showToast('Risposta inviata con successo');
             loadMessages(activeSession, sessione.negozio_id);
-            loadConversations();
           } else {
-            showToast('Errore nell\'invio', true);
+            showToast('Errore nell\'invio: ' + (data.message || 'Riprova'), true);
           }
         })
         .catch(function (err) {
