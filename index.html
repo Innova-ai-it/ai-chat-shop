@@ -1331,12 +1331,18 @@
             if (!r.ok) {
               // Usa il clone per leggere il testo della risposta (il body originale è già stato letto)
               return responseClone.text().then(function(text) {
-                console.error('Risposta non-JSON:', text); // DEBUG
+                console.error('Risposta non-JSON (testo):', text); // DEBUG
                 // Prova a parsare come JSON se sembra essere JSON
                 try {
                   const jsonData = JSON.parse(text);
+                  console.log('JSON parsato dal testo:', jsonData); // DEBUG
                   throw new Error(jsonData.error || 'Errore server: ' + r.status);
                 } catch (parseError) {
+                  // Se il parse ha successo ma non c'è error, o se il parse fallisce
+                  if (parseError.message && parseError.message !== 'Errore server: ' + r.status) {
+                    // Se abbiamo un messaggio di errore valido, usalo
+                    throw parseError;
+                  }
                   throw new Error('Errore server: ' + r.status + ' - ' + r.statusText);
                 }
               });
