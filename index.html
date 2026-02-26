@@ -5,6 +5,8 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Customer Service Dashboard</title>
+  <!-- Configurazione (carica prima dello script principale) -->
+  <script src="config.js"></script>
   <!-- Supabase JS Client via CDN -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
   <style>
@@ -154,6 +156,28 @@
       font-size: 13px;
       margin-top: 12px;
       display: none;
+    }
+
+    .mode-btn {
+      flex: 1;
+      padding: 10px;
+      border: none;
+      background: transparent;
+      color: var(--text-muted);
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      border-bottom: 2px solid transparent;
+      transition: all .2s;
+    }
+
+    .mode-btn.active {
+      color: var(--primary);
+      border-bottom-color: var(--primary);
+    }
+
+    .mode-btn:hover:not(.active) {
+      color: var(--text);
     }
 
     /* ============================================================
@@ -972,7 +996,7 @@
   <div id="toast-container"></div>
 
   <!-- ============================================================
-     SCREEN: LOGIN
+     SCREEN: LOGIN/REGISTRAZIONE
 ============================================================ -->
   <div id="screen-login">
     <div class="login-card">
@@ -981,16 +1005,32 @@
         <h1>Customer Service</h1>
         <p>Dashboard Operatori</p>
       </div>
+      
+      <!-- Toggle Login/Registrazione -->
+      <div style="display: flex; gap: 8px; margin-bottom: 24px; border-bottom: 1px solid var(--border); padding-bottom: 16px;">
+        <button type="button" id="btn-mode-login" class="mode-btn active">Accedi</button>
+        <button type="button" id="btn-mode-register" class="mode-btn">Registrati</button>
+      </div>
+
       <form id="login-form" autocomplete="on">
         <div class="form-group">
           <label for="login-email">Email</label>
           <input type="email" id="login-email" placeholder="operatore@negozio.com" required autocomplete="email" />
         </div>
-        <div class="form-group">
+        <div class="form-group" id="password-group">
           <label for="login-password">Password</label>
           <input type="password" id="login-password" placeholder="••••••••" required autocomplete="current-password" />
         </div>
+        <div class="form-group" id="confirm-password-group" style="display: none;">
+          <label for="confirm-password">Conferma Password</label>
+          <input type="password" id="confirm-password" placeholder="••••••••" autocomplete="new-password" />
+        </div>
         <button type="submit" class="btn-primary" id="login-btn">Accedi</button>
+        <div style="text-align: center; margin-top: 12px;">
+          <a href="#" id="link-reset-password" style="color: var(--primary); text-decoration: none; font-size: 13px;">
+            Password dimenticata?
+          </a>
+        </div>
         <div id="login-error"></div>
       </form>
     </div>
@@ -1146,12 +1186,18 @@
 
   <script>
     // ================================================================
-    // CONFIGURAZIONE — modifica questi valori
+    // CONFIGURAZIONE — carica da config.js (non committare config.js su GitHub)
     // ================================================================
-    var SUPABASE_URL = 'https://qpkamevovisplbmxcjae.supabase.co';
-    var SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFwa2FtZXZvdmlzcGxibXhjamFlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE0ODk4MzksImV4cCI6MjA4NzA2NTgzOX0.6RzhpKdUH3gqnH5tF-VZdvp33AFDhDw5V0UiAdMg0FI';
-    var N8N_WEBHOOK_URL = 'https://n8n.srv1289851.hstgr.cloud';   // senza slash finale
-    var ADMIN_EMAIL = 'giovanniecomdesign@gmail.com';      // il tuo account admin
+    var SUPABASE_URL = window.DASHBOARD_CONFIG?.SUPABASE_URL || '';
+    var SUPABASE_ANON_KEY = window.DASHBOARD_CONFIG?.SUPABASE_ANON_KEY || '';
+    var N8N_WEBHOOK_URL = window.DASHBOARD_CONFIG?.N8N_WEBHOOK_URL || '';
+    var ADMIN_EMAIL = window.DASHBOARD_CONFIG?.ADMIN_EMAIL || '';
+    
+    // Verifica che la configurazione sia presente
+    if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+      console.error('ERRORE: Configurazione mancante! Assicurati che config.js esista e contenga i valori corretti.');
+      alert('Errore di configurazione: file config.js mancante o incompleto. Controlla la console per dettagli.');
+    }
 
     // ================================================================
     // STATO APP
@@ -1190,12 +1236,37 @@
     }
 
     // ================================================================
-    // LOGIN
+    // LOGIN E REGISTRAZIONE
     // ================================================================
+    var isRegisterMode = false;
+
+    // Toggle tra login e registrazione
+    document.getElementById('btn-mode-login').addEventListener('click', function() {
+      isRegisterMode = false;
+      document.getElementById('btn-mode-login').classList.add('active');
+      document.getElementById('btn-mode-register').classList.remove('active');
+      document.getElementById('login-btn').textContent = 'Accedi';
+      document.getElementById('confirm-password-group').style.display = 'none';
+      document.getElementById('login-password').required = true;
+      document.getElementById('confirm-password').required = false;
+    });
+
+    document.getElementById('btn-mode-register').addEventListener('click', function() {
+      isRegisterMode = true;
+      document.getElementById('btn-mode-register').classList.add('active');
+      document.getElementById('btn-mode-login').classList.remove('active');
+      document.getElementById('login-btn').textContent = 'Registrati';
+      document.getElementById('confirm-password-group').style.display = 'block';
+      document.getElementById('login-password').required = true;
+      document.getElementById('confirm-password').required = true;
+    });
+
+    // Form submit
     document.getElementById('login-form').addEventListener('submit', function (e) {
       e.preventDefault();
       var email = document.getElementById('login-email').value.trim();
       var password = document.getElementById('login-password').value;
+      var confirmPassword = document.getElementById('confirm-password').value;
       var btn = document.getElementById('login-btn');
       var errEl = document.getElementById('login-error');
 
@@ -1203,15 +1274,96 @@
       btn.innerHTML = '<span class="spinner"></span>';
       errEl.style.display = 'none';
 
-      supabase.auth.signInWithPassword({ email: email, password: password })
-        .then(function (res) {
+      // Validazione registrazione
+      if (isRegisterMode) {
+        if (password !== confirmPassword) {
           btn.disabled = false;
-          btn.textContent = 'Accedi';
-          if (res.error) {
-            errEl.textContent = 'Credenziali non valide. Controlla email e password.';
+          btn.textContent = 'Registrati';
+          errEl.textContent = 'Le password non corrispondono';
+          errEl.style.display = 'block';
+          return;
+        }
+        if (password.length < 6) {
+          btn.disabled = false;
+          btn.textContent = 'Registrati';
+          errEl.textContent = 'La password deve essere di almeno 6 caratteri';
+          errEl.style.display = 'block';
+          return;
+        }
+      }
+
+      var endpoint = isRegisterMode ? 'auth-register' : 'auth-login';
+      
+      fetch(SUPABASE_URL + '/functions/v1/' + endpoint, {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer ' + SUPABASE_ANON_KEY
+        },
+        body: JSON.stringify({ email: email, password: password })
+      })
+        .then(function (r) {
+          if (!r.ok) throw new Error('Errore server');
+          return r.json();
+        })
+        .then(function (data) {
+          btn.disabled = false;
+          btn.textContent = isRegisterMode ? 'Registrati' : 'Accedi';
+          if (data.error) {
+            errEl.textContent = data.error;
             errEl.style.display = 'block';
+          } else if (data.session) {
+            // Imposta la sessione Supabase
+            supabase.auth.setSession({
+              access_token: data.session.access_token,
+              refresh_token: data.session.refresh_token
+            }).then(function (res) {
+              if (res.data && res.data.user) {
+                if (isRegisterMode) {
+                  showToast('Registrazione completata! Accesso effettuato.');
+                }
+                onLogin(res.data.user);
+              } else if (res.error) {
+                errEl.textContent = 'Errore nella sessione: ' + res.error.message;
+                errEl.style.display = 'block';
+              }
+            });
+          }
+        })
+        .catch(function (err) {
+          btn.disabled = false;
+          btn.textContent = isRegisterMode ? 'Registrati' : 'Accedi';
+          errEl.textContent = 'Errore di connessione. Riprova.';
+          errEl.style.display = 'block';
+        });
+    });
+
+    // Reset password
+    document.getElementById('link-reset-password').addEventListener('click', function(e) {
+      e.preventDefault();
+      var email = prompt('Inserisci la tua email per reimpostare la password:');
+      if (!email) return;
+
+      fetch(SUPABASE_URL + '/functions/v1/auth-reset-password', {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer ' + SUPABASE_ANON_KEY
+        },
+        body: JSON.stringify({ email: email })
+      })
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+          if (data.error) {
+            alert('Errore: ' + data.error);
           } else {
-            onLogin(res.data.user);
+            // In produzione, il link sarà inviato via email
+            // Per ora mostriamo il link (rimuovi in produzione)
+            if (data.resetLink) {
+              alert('Link di reset: ' + data.resetLink + '\n\n(Questo è solo per test. In produzione verrà inviato via email)');
+            } else {
+              alert('Link di reset inviato via email!');
+            }
           }
         });
     });
