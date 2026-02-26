@@ -1314,8 +1314,21 @@
         body: JSON.stringify({ email: email, password: password })
       })
         .then(function (r) {
-          if (!r.ok) throw new Error('Errore server');
-          return r.json();
+          // Leggi sempre il JSON, anche se c'è un errore
+          return r.json().then(function(data) {
+            if (!r.ok) {
+              // Se c'è un errore, mostra il messaggio specifico dalla funzione
+              throw new Error(data.error || 'Errore server: ' + r.status);
+            }
+            return data;
+          }).catch(function(jsonError) {
+            // Se non riesce a parsare il JSON (es. risposta vuota), mostra errore generico
+            if (!r.ok) {
+              throw new Error('Errore server: ' + r.status + ' - ' + r.statusText);
+            }
+            // Se è un errore di parsing JSON ma la risposta è ok, rilancia l'errore originale
+            throw jsonError;
+          });
         })
         .then(function (data) {
           btn.disabled = false;
