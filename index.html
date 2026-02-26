@@ -1315,6 +1315,8 @@
       })
         .then(function (r) {
           console.log('Status risposta:', r.status, r.statusText); // DEBUG
+          // Clona la risposta per poterla leggere più volte se necessario
+          const responseClone = r.clone();
           // Leggi sempre il JSON, anche se c'è un errore
           return r.json().then(function(data) {
             console.log('Risposta funzione:', data); // DEBUG
@@ -1327,10 +1329,16 @@
             console.error('Errore parsing JSON:', jsonError, 'Status:', r.status); // DEBUG
             // Se non riesce a parsare il JSON (es. risposta vuota), mostra errore generico
             if (!r.ok) {
-              // Prova a leggere il testo della risposta per vedere cosa c'è
-              return r.text().then(function(text) {
+              // Usa il clone per leggere il testo della risposta (il body originale è già stato letto)
+              return responseClone.text().then(function(text) {
                 console.error('Risposta non-JSON:', text); // DEBUG
-                throw new Error('Errore server: ' + r.status + ' - ' + r.statusText);
+                // Prova a parsare come JSON se sembra essere JSON
+                try {
+                  const jsonData = JSON.parse(text);
+                  throw new Error(jsonData.error || 'Errore server: ' + r.status);
+                } catch (parseError) {
+                  throw new Error('Errore server: ' + r.status + ' - ' + r.statusText);
+                }
               });
             }
             // Se è un errore di parsing JSON ma la risposta è ok, rilancia l'errore originale
