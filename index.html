@@ -293,27 +293,61 @@
       display: inline;
     }
 
-    #sidebar-filter {
-      padding: 10px 16px;
+    #sidebar-filters {
+      padding: 12px 16px;
       border-bottom: 1px solid var(--border);
       display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .filter-group {
+      display: flex;
+      flex-direction: column;
       gap: 6px;
     }
 
+    .filter-label {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 2px;
+    }
+
+    .filter-buttons {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+
     .filter-btn {
-      padding: 4px 12px;
-      border-radius: 20px;
+      padding: 6px 14px;
+      border-radius: 8px;
       border: 1.5px solid var(--border);
       background: transparent;
       font-size: 12px;
+      font-weight: 500;
       cursor: pointer;
       transition: all .15s;
+      white-space: nowrap;
+    }
+
+    .filter-btn:hover:not(.active) {
+      background: var(--bg);
+      border-color: var(--primary);
     }
 
     .filter-btn.active {
       background: var(--primary);
       border-color: var(--primary);
       color: #fff;
+    }
+
+    .filter-btn.channel-btn {
+      padding: 5px 12px;
+      font-size: 11px;
     }
 
     #conv-list {
@@ -410,6 +444,16 @@
       color: var(--text-muted);
       border: 1px solid var(--border);
     }
+
+    .badge-unread {
+      background: var(--primary);
+      color: #fff;
+      border: none;
+      margin-left: auto;
+      min-width: 20px;
+      text-align: center;
+    }
+
 
     #conv-empty {
       padding: 48px 24px;
@@ -951,7 +995,7 @@
 
     <!-- Header -->
     <div id="app-header">
-      <div class="header-logo">💬 CS Dashboard <span id="header-negozio"></span></div>
+      <div class="header-logo">💬 CS Dashboard</div>
       <div id="header-tabs">
         <button class="tab-btn active" data-tab="conversations">Conversazioni</button>
         <button class="tab-btn" data-tab="admin" id="tab-admin" style="display:none;">Admin</button>
@@ -970,10 +1014,23 @@
         <div id="sidebar-header">
           <h2>Conversazioni <span id="sidebar-badge" class="badge badge-escalation"></span></h2>
         </div>
-        <div id="sidebar-filter">
-          <button class="filter-btn active" data-filter="escalation">In attesa</button>
-          <button class="filter-btn" data-filter="all">Tutte</button>
-          <button class="filter-btn" data-filter="chiusa">Chiuse</button>
+        <div id="sidebar-filters">
+          <div class="filter-group">
+            <div class="filter-label">Stato</div>
+            <div class="filter-buttons">
+              <button class="filter-btn active" data-filter="escalation">In attesa</button>
+              <button class="filter-btn" data-filter="all">Tutte</button>
+              <button class="filter-btn" data-filter="chiusa">Chiuse</button>
+            </div>
+          </div>
+          <div class="filter-group">
+            <div class="filter-label">Canale</div>
+            <div class="filter-buttons">
+              <button class="filter-btn channel-btn active" data-channel="all">Tutti</button>
+              <button class="filter-btn channel-btn" data-channel="chat">💬 Chat</button>
+              <button class="filter-btn channel-btn" data-channel="email">✉ Email</button>
+            </div>
+          </div>
         </div>
         <div id="conv-list">
           <div id="conv-empty">
@@ -1002,8 +1059,14 @@
           </div>
           <div id="conv-messages"></div>
           <div id="conv-reply">
-            <textarea id="reply-input" rows="1" placeholder="Scrivi una risposta..."></textarea>
-            <button id="btn-send-reply">Invia risposta</button>
+            <div id="reply-email-fields" style="display: none; margin-bottom: 8px;">
+              <input type="text" id="reply-subject" placeholder="Oggetto email..." style="width: 100%; padding: 8px 12px; border: 1.5px solid var(--border); border-radius: 8px; font-size: 13px; outline: none;" />
+            </div>
+            <div style="display: flex; gap: 12px; align-items: flex-end;">
+              <textarea id="reply-input" rows="1" placeholder="Scrivi una risposta..."></textarea>
+              <button id="btn-send-reply">Invia risposta</button>
+            </div>
+            <div id="typing-indicator" style="display: none; font-size: 12px; color: var(--text-muted); margin-top: 4px; font-style: italic;">✍️ Sta scrivendo...</div>
           </div>
         </div>
       </div>
@@ -1091,10 +1154,15 @@
     var isAdmin = false;
     var activeSession = null;
     var activeFilter = 'escalation';
+    var activeChannelFilter = 'all'; // 'all', 'chat', 'email'
     var allSessions = [];
     var refreshTimer = null;
     var sessionSubscription = null;
     var messagesSubscription = null;
+    var unreadCounts = {}; // session_id -> count
+    var lastReadTimestamps = {}; // session_id -> timestamp
+    var typingTimeout = null;
+    var currentCanale = null; // canale della conversazione corrente
 
     // ================================================================
     // INIT
@@ -1174,8 +1242,7 @@
         .then(function (res) {
           if (res.data) {
             currentNegozioId = res.data.negozio_id;
-            var nomeName = res.data.negozi ? res.data.negozi.nome : '';
-            document.getElementById('header-negozio').textContent = nomeName ? '— ' + nomeName : '';
+            // Nome negozio rimosso dall'header come richiesto
           }
           startApp();
         });
@@ -1206,6 +1273,22 @@
         .channel('sessioni-changes')
         .on('postgres_changes', { event: '*', schema: 'public', table: 'sessioni' }, function (payload) {
           console.log('Update sessione:', payload);
+          
+          // Se è una nuova escalation, suona la notifica
+          if (payload.new && payload.new.stato === 'escalation') {
+            // Controlla se è una nuova escalation (INSERT) o se è cambiata a escalation (UPDATE)
+            var isNewEscalation = payload.eventType === 'INSERT' || 
+              (payload.eventType === 'UPDATE' && payload.old && payload.old.stato !== 'escalation');
+            
+            if (isNewEscalation) {
+              playNotificationSound();
+              if (document.hidden || !document.hasFocus()) {
+                var clienteName = payload.new.email_cliente || payload.new.nome_cliente || 'Cliente';
+                showBrowserNotification('Nuova escalation', 'Nuova conversazione richiede attenzione: ' + clienteName);
+              }
+            }
+          }
+          
           loadConversations(); // Ricarica la lista per sicurezza
 
           // Se è il cambio stato della sessione attiva
@@ -1213,6 +1296,7 @@
             if (payload.new.stato === 'chiusa') {
               showToast('La sessione è stata chiusa.');
               activeSession = null;
+              if (window.messagePolling) clearInterval(window.messagePolling);
               document.getElementById('conv-detail').classList.remove('visible');
               document.getElementById('conv-placeholder').style.display = 'flex';
             }
@@ -1233,8 +1317,24 @@
           filter: 'session_id=eq.' + sessionId
         }, function (payload) {
           console.log('Nuovo messaggio:', payload.new);
-          // Invece di ricaricare tutto, aggiungiamo il singolo messaggio se non c'è già
-          loadMessages(sessionId);
+          var newMsg = payload.new;
+          
+          // Se il messaggio è dalla conversazione attiva, ricarica i messaggi
+          if (activeSession === sessionId) {
+            var sessione = allSessions.find(function (s) { return s.session_id === sessionId; });
+            if (sessione) {
+              loadMessages(sessionId, sessione.negozio_id, true);
+            }
+          } else {
+            // Se non è la conversazione attiva, incrementa il contatore non letti
+            if (newMsg.ruolo === 'utente') {
+              unreadCounts[sessionId] = (unreadCounts[sessionId] || 0) + 1;
+              updateUnreadBadge(sessionId);
+            }
+          }
+          
+          // Aggiorna la sidebar per mostrare il nuovo messaggio
+          loadConversations();
         })
         .subscribe();
     }
@@ -1267,8 +1367,60 @@
         }
         console.log('Sessioni trovate:', res.data);
         allSessions = res.data || [];
-        renderSidebar(allSessions);
+        
+        // Carica ultimi messaggi e canali per ogni sessione
+        loadLastMessagesForSessions(allSessions);
       });
+    }
+    
+    // Carica ultimi messaggi e canali per ogni sessione
+    function loadLastMessagesForSessions(sessions) {
+      if (sessions.length === 0) {
+        renderSidebar(sessions);
+        return;
+      }
+      
+      var sessionIds = sessions.map(function(s) { return s.session_id; });
+      
+      // Carica ultimo messaggio e canale per ogni sessione
+      // Query unica per tutte le sessioni, poi filtriamo per prendere solo l'ultimo per sessione
+      supabase
+        .from('conversazioni')
+        .select('session_id, messaggio, canale, created_at, ruolo')
+        .in('session_id', sessionIds)
+        .order('created_at', { ascending: false })
+        .then(function (res) {
+          var lastMessagesMap = {};
+          var canaliMap = {};
+          
+          if (res.data) {
+            // Prendi solo il primo messaggio (più recente) per ogni session_id
+            var seenSessions = {};
+            res.data.forEach(function (msg) {
+              if (!seenSessions[msg.session_id]) {
+                lastMessagesMap[msg.session_id] = msg.messaggio;
+                canaliMap[msg.session_id] = msg.canale || 'chat';
+                seenSessions[msg.session_id] = true;
+              }
+            });
+          }
+          
+          // Aggiungi dati alle sessioni
+          sessions.forEach(function (s) {
+            s.lastMessage = lastMessagesMap[s.session_id] || null;
+            s.canale = canaliMap[s.session_id] || 'chat';
+          });
+          
+          renderSidebar(sessions);
+        }).catch(function(err) {
+          console.error('Errore caricamento ultimi messaggi:', err);
+          // In caso di errore, usa valori di default
+          sessions.forEach(function (s) {
+            s.lastMessage = null;
+            s.canale = 'chat';
+          });
+          renderSidebar(sessions);
+        });
     }
 
     // ================================================================
@@ -1279,11 +1431,19 @@
       var badge = document.getElementById('sidebar-badge');
       var empty = document.getElementById('conv-empty');
 
-      var escalationCount = sessions.filter(function (s) { return s.stato === 'escalation'; }).length;
+      // Filtra per canale se necessario
+      var filteredSessions = sessions;
+      if (activeChannelFilter !== 'all') {
+        filteredSessions = sessions.filter(function (s) {
+          return (s.canale || 'chat') === activeChannelFilter;
+        });
+      }
+
+      var escalationCount = filteredSessions.filter(function (s) { return s.stato === 'escalation'; }).length;
       badge.textContent = escalationCount;
       badge.classList.toggle('visible', escalationCount > 0);
 
-      if (sessions.length === 0) {
+      if (filteredSessions.length === 0) {
         list.innerHTML = '';
         if (empty) empty.style.display = 'block';
         return;
@@ -1292,9 +1452,9 @@
       if (empty) empty.style.display = 'none';
       list.innerHTML = '';
 
-      sessions.forEach(function (s) {
-        var lastMsg = '(clicca per vedere i messaggi)';
-        var lastCanale = 'chat';
+      filteredSessions.forEach(function (s) {
+        var lastMsg = s.lastMessage || '(nessun messaggio)';
+        var lastCanale = s.canale || 'chat';
         if (lastMsg.length > 55) lastMsg = lastMsg.slice(0, 55) + '…';
 
         var timeStr = s.updated_at ? new Date(s.updated_at).toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' }) : '';
@@ -1304,8 +1464,23 @@
         else badgeHtml = '<span class="badge badge-chiusa">✓ Chiusa</span>';
 
         var canaleBadge = '<span class="badge badge-canale">' + (lastCanale === 'email' ? '✉ Email' : '💬 Chat') + '</span>';
+        
+        // Contatore messaggi non letti
+        var unreadBadge = '';
+        var unreadCount = unreadCounts[s.session_id] || 0;
+        if (unreadCount > 0 && activeSession !== s.session_id) {
+          unreadBadge = '<span class="badge badge-unread">' + (unreadCount > 99 ? '99+' : unreadCount) + '</span>';
+        }
 
+        // Nome cliente - migliorato per raccogliere email/nome
         var clienteLabel = s.email_cliente || s.nome_cliente || 'Cliente anonimo';
+        // Se abbiamo solo email, estrai il nome prima della @ se possibile
+        if (clienteLabel.includes('@') && !s.nome_cliente) {
+          var emailParts = clienteLabel.split('@');
+          if (emailParts[0]) {
+            clienteLabel = emailParts[0].charAt(0).toUpperCase() + emailParts[0].slice(1);
+          }
+        }
 
         var div = document.createElement('div');
         div.className = 'conv-item' + (activeSession === s.session_id ? ' active' : '');
@@ -1315,8 +1490,8 @@
           '<span class="conv-item-name">' + escHtml(clienteLabel) + '</span>',
           '<span class="conv-item-time">' + timeStr + '</span>',
           '</div>',
-          '<div class="conv-item-preview">' + escHtml(lastMsg || '(nessun messaggio)') + '</div>',
-          '<div class="conv-item-footer">' + badgeHtml + canaleBadge + '</div>'
+          '<div class="conv-item-preview">' + escHtml(lastMsg) + '</div>',
+          '<div class="conv-item-footer" style="display: flex; align-items: center; gap: 6px;">' + badgeHtml + canaleBadge + unreadBadge + '</div>'
         ].join('');
 
         div.addEventListener('click', function () {
@@ -1326,12 +1501,43 @@
         list.appendChild(div);
       });
     }
+    
+    function updateUnreadBadge(sessionId) {
+      var item = document.querySelector('.conv-item[data-session="' + sessionId + '"]');
+      if (!item) return;
+      
+      var footer = item.querySelector('.conv-item-footer');
+      if (!footer) return;
+      
+      // Rimuovi badge esistente
+      var existingBadge = footer.querySelector('.badge-unread');
+      if (existingBadge) existingBadge.remove();
+      
+      // Aggiungi nuovo badge se necessario
+      var unreadCount = unreadCounts[sessionId] || 0;
+      if (unreadCount > 0 && activeSession !== sessionId) {
+        var unreadBadge = '<span class="badge badge-unread">' + (unreadCount > 99 ? '99+' : unreadCount) + '</span>';
+        footer.insertAdjacentHTML('beforeend', unreadBadge);
+      }
+    }
 
     // ================================================================
     // APRI CONVERSAZIONE
     // ================================================================
     function openConversation(sessione) {
+      // Ferma il polling precedente se esiste
+      if (window.messagePolling) {
+        clearInterval(window.messagePolling);
+        window.messagePolling = null;
+      }
+      
       activeSession = sessione.session_id;
+      currentCanale = sessione.canale || 'chat';
+
+      // Reset contatore non letti per questa sessione
+      unreadCounts[sessione.session_id] = 0;
+      lastReadTimestamps[sessione.session_id] = Date.now();
+      updateUnreadBadge(sessione.session_id);
 
       // Aggiorna sidebar highlight
       document.querySelectorAll('.conv-item').forEach(function (el) {
@@ -1344,13 +1550,40 @@
 
       // Info cliente
       var emailLabel = sessione.email_cliente || sessione.nome_cliente || 'Cliente anonimo';
+      if (emailLabel.includes('@') && !sessione.nome_cliente) {
+        var emailParts = emailLabel.split('@');
+        if (emailParts[0]) {
+          emailLabel = emailParts[0].charAt(0).toUpperCase() + emailParts[0].slice(1);
+        }
+      }
       document.getElementById('conv-info-email').textContent = emailLabel;
       document.getElementById('conv-info-meta').textContent =
         'Sessione: ' + sessione.session_id.slice(0, 20) + '… | Stato: ' + sessione.stato +
+        ' | Canale: ' + (currentCanale === 'email' ? '✉ Email' : '💬 Chat') +
         ' | Aperta: ' + (sessione.created_at ? new Date(sessione.created_at).toLocaleString('it-IT') : '—');
+
+      // Mostra/nascondi campo oggetto per email
+      var emailFields = document.getElementById('reply-email-fields');
+      if (currentCanale === 'email') {
+        emailFields.style.display = 'block';
+      } else {
+        emailFields.style.display = 'none';
+        document.getElementById('reply-subject').value = '';
+      }
 
       // Setup Realtime per i messaggi di QUESTA sessione
       setupMessageRealtime(sessione.session_id);
+
+      // Polling fallback per i messaggi (ogni 3 secondi in modo silenzioso)
+      window.messagePolling = setInterval(function() {
+        if (activeSession === sessione.session_id) {
+          loadMessages(sessione.session_id, sessione.negozio_id, true);
+        } else {
+          // Se la sessione attiva è cambiata, ferma il polling
+          clearInterval(window.messagePolling);
+          window.messagePolling = null;
+        }
+      }, 3000);
 
       // Carica messaggi
       loadMessages(sessione.session_id, sessione.negozio_id);
@@ -1370,6 +1603,13 @@
         .then(function (res) {
           if (res.error) return;
           renderMessages(res.data || []);
+          
+          // Aggiorna timestamp ultima lettura
+          if (activeSession === sessionId) {
+            lastReadTimestamps[sessionId] = Date.now();
+            unreadCounts[sessionId] = 0;
+            updateUnreadBadge(sessionId);
+          }
         });
     }
 
@@ -1412,9 +1652,18 @@
 
     function sendOperatorReply() {
       var input = document.getElementById('reply-input');
+      var subjectInput = document.getElementById('reply-subject');
       var btn = document.getElementById('btn-send-reply');
       var msg = input.value.trim();
+      var subject = currentCanale === 'email' ? subjectInput.value.trim() : null;
+      
       if (!msg || !activeSession) return;
+      
+      // Se è email e non c'è oggetto, avvisa
+      if (currentCanale === 'email' && !subject) {
+        showToast('Inserisci un oggetto per l\'email', true);
+        return;
+      }
 
       btn.disabled = true;
       btn.textContent = 'Invio...';
@@ -1422,18 +1671,24 @@
       var sessione = allSessions.find(function (s) { return s.session_id === activeSession; });
       if (!sessione) return;
 
+      var payload = {
+        session_id: activeSession,
+        negozio_id: sessione.negozio_id,
+        messaggio: msg,
+        operatore_id: currentUser.id,
+        chiudi: false
+      };
+      
+      if (subject) {
+        payload.oggetto = subject;
+      }
+
       fetch(N8N_WEBHOOK_URL + '/webhook/risposta-operatore', {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json' 
         },
-        body: JSON.stringify({
-          session_id: activeSession,
-          negozio_id: sessione.negozio_id,
-          messaggio: msg,
-          operatore_id: currentUser.id,
-          chiudi: false
-        })
+        body: JSON.stringify(payload)
       })
         .then(function (r) { 
           if (!r.ok) throw new Error('Errore server n8n');
@@ -1445,8 +1700,10 @@
           if (data.success) {
             input.value = '';
             input.style.height = 'auto';
+            if (subjectInput) subjectInput.value = '';
             showToast('Risposta inviata con successo');
             loadMessages(activeSession, sessione.negozio_id, true);
+            loadConversations(); // Aggiorna sidebar per mostrare nuovo messaggio
           } else {
             showToast('Errore nell\'invio: ' + (data.message || 'Riprova'), true);
           }
@@ -1479,6 +1736,11 @@
       }).then(function() {
         showToast('Sessione chiusa');
         activeSession = null;
+        currentCanale = null;
+        if (window.messagePolling) {
+          clearInterval(window.messagePolling);
+          window.messagePolling = null;
+        }
         document.getElementById('conv-detail').classList.remove('visible');
         document.getElementById('conv-placeholder').style.display = 'flex';
         loadConversations();
@@ -1489,6 +1751,18 @@
     document.getElementById('reply-input').addEventListener('input', function () {
       this.style.height = 'auto';
       this.style.height = Math.min(this.scrollHeight, 120) + 'px';
+      
+      // Indicatore "sta scrivendo" - mostra quando l'operatore sta scrivendo
+      var typingIndicator = document.getElementById('typing-indicator');
+      if (this.value.trim().length > 0) {
+        typingIndicator.style.display = 'block';
+        if (typingTimeout) clearTimeout(typingTimeout);
+        typingTimeout = setTimeout(function() {
+          typingIndicator.style.display = 'none';
+        }, 2000);
+      } else {
+        typingIndicator.style.display = 'none';
+      }
     });
 
     // ================================================================
@@ -1608,15 +1882,78 @@
         }
       });
 
-      // Filter buttons
-      document.getElementById('sidebar-filter').addEventListener('click', function (e) {
-        var btn = e.target.closest('.filter-btn');
-        if (!btn) return;
-        document.querySelectorAll('.filter-btn').forEach(function (b) { b.classList.remove('active'); });
-        btn.classList.add('active');
-        activeFilter = btn.dataset.filter;
-        loadConversations();
+      // Filter buttons - stato
+      var filterButtons = document.querySelectorAll('#sidebar-filters .filter-btn[data-filter]');
+      filterButtons.forEach(function(btn) {
+        btn.addEventListener('click', function() {
+          document.querySelectorAll('#sidebar-filters .filter-btn[data-filter]').forEach(function (b) { b.classList.remove('active'); });
+          btn.classList.add('active');
+          activeFilter = btn.dataset.filter;
+          loadConversations();
+        });
       });
+      
+      // Channel filter buttons
+      var channelButtons = document.querySelectorAll('#sidebar-filters .filter-btn[data-channel]');
+      channelButtons.forEach(function(btn) {
+        btn.addEventListener('click', function() {
+          document.querySelectorAll('#sidebar-filters .filter-btn[data-channel]').forEach(function (b) { b.classList.remove('active'); });
+          btn.classList.add('active');
+          activeChannelFilter = btn.dataset.channel;
+          loadConversations();
+        });
+      });
+      
+      // Imposta "Tutti" come attivo di default per il canale
+      var allChannelBtn = document.querySelector('#sidebar-filters .filter-btn[data-channel="all"]');
+      if (allChannelBtn) allChannelBtn.classList.add('active');
+    }
+    
+    // ================================================================
+    // NOTIFICHE E SUONI
+    // ================================================================
+    function playNotificationSound() {
+      try {
+        // Crea un suono breve usando Web Audio API
+        var audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        var oscillator = audioContext.createOscillator();
+        var gainNode = audioContext.createGain();
+        
+        oscillator.connect(gainNode);
+        gainNode.connect(audioContext.destination);
+        
+        oscillator.frequency.value = 800;
+        oscillator.type = 'sine';
+        
+        gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.3);
+        
+        oscillator.start(audioContext.currentTime);
+        oscillator.stop(audioContext.currentTime + 0.3);
+      } catch (e) {
+        console.log('Impossibile riprodurre suono:', e);
+      }
+    }
+    
+    function showBrowserNotification(title, body) {
+      if (!('Notification' in window)) {
+        return;
+      }
+      
+      if (Notification.permission === 'granted') {
+        new Notification(title, { body: body, icon: '💬' });
+      } else if (Notification.permission !== 'denied') {
+        Notification.requestPermission().then(function (permission) {
+          if (permission === 'granted') {
+            new Notification(title, { body: body, icon: '💬' });
+          }
+        });
+      }
+    }
+    
+    // Richiedi permesso notifiche all'avvio
+    if ('Notification' in window && Notification.permission === 'default') {
+      // Non richiediamo automaticamente, ma possiamo farlo quando arriva la prima escalation
     }
 
     // ================================================================
