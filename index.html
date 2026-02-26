@@ -1324,14 +1324,20 @@
           table: 'conversazioni',
           filter: 'session_id=eq.' + sessionId
         }, function (payload) {
-          console.log('Nuovo messaggio:', payload.new);
+          console.log('Nuovo messaggio realtime:', payload.new);
           var newMsg = payload.new;
           
           // Se il messaggio è dalla conversazione attiva, ricarica i messaggi
+          // Usa un piccolo delay per evitare race conditions
           if (activeSession === sessionId) {
             var sessione = allSessions.find(function (s) { return s.session_id === sessionId; });
             if (sessione) {
-              loadMessages(sessionId, sessione.negozio_id, true);
+              // Delay di 300ms per permettere al database di completare la transazione
+              setTimeout(function() {
+                if (activeSession === sessionId) {
+                  loadMessages(sessionId, sessione.negozio_id, true);
+                }
+              }, 300);
             }
           } else {
             // Se non è la conversazione attiva, incrementa il contatore non letti
@@ -1341,8 +1347,10 @@
             }
           }
           
-          // Aggiorna la sidebar per mostrare il nuovo messaggio
-          loadConversations();
+          // Aggiorna la sidebar per mostrare il nuovo messaggio (con delay)
+          setTimeout(function() {
+            loadConversations();
+          }, 200);
         })
         .subscribe();
     }
@@ -1598,19 +1606,38 @@
     }
 
     var isLoadingMessages = false; // Flag per evitare chiamate multiple simultanee
+    var lastLoadTime = {}; // Traccia l'ultimo caricamento per sessione
+    var loadMessagesDebounce = {}; // Debounce per evitare chiamate troppo frequenti
 
     function loadMessages(sessionId, negozioId, silent) {
-      // Evita chiamate multiple simultanee
-      if (isLoadingMessages && !silent) {
-        return;
-      }
-      
       // Se non è la sessione attiva, non caricare
       if (activeSession !== sessionId) {
         return;
       }
       
+      // Debounce: evita chiamate troppo frequenti (minimo 500ms tra una chiamata e l'altra)
+      var now = Date.now();
+      var lastTime = lastLoadTime[sessionId] || 0;
+      if (now - lastTime < 500 && !silent) {
+        // Cancella il timeout precedente se esiste
+        if (loadMessagesDebounce[sessionId]) {
+          clearTimeout(loadMessagesDebounce[sessionId]);
+        }
+        // Programma un nuovo caricamento dopo il debounce
+        loadMessagesDebounce[sessionId] = setTimeout(function() {
+          loadMessages(sessionId, negozioId, true);
+        }, 500 - (now - lastTime));
+        return;
+      }
+      
+      // Evita chiamate multiple simultanee
+      if (isLoadingMessages && !silent) {
+        return;
+      }
+      
       isLoadingMessages = true;
+      lastLoadTime[sessionId] = Date.now();
+      
       var msgsEl = document.getElementById('conv-messages');
       if (!silent) {
         msgsEl.innerHTML = '<div style="text-align:center;padding:20px;color:var(--text-muted)">Caricamento...</div>';
@@ -1618,16 +1645,24 @@
 
       supabase
         .from('conversazioni')
-        .select('*')
+        .select('id, session_id, messaggio, ruolo, created_at, canale')
         .eq('session_id', sessionId)
         .order('created_at', { ascending: true })
         .then(function (res) {
           isLoadingMessages = false;
-          if (res.error) return;
+          if (res.error) {
+            console.error('Errore caricamento messaggi:', res.error);
+            return;
+          }
           
           // Verifica ancora che sia la sessione attiva prima di renderizzare
           if (activeSession === sessionId) {
-            renderMessages(res.data || []);
+            // Filtra i messaggi nulli o vuoti
+            var validMsgs = (res.data || []).filter(function(msg) {
+              return msg && msg.messaggio && msg.messaggio.trim().length > 0;
+            });
+            
+            renderMessages(validMsgs);
             
             // Aggiorna timestamp ultima lettura
             lastReadTimestamps[sessionId] = Date.now();
@@ -1643,32 +1678,72 @@
 
     function renderMessages(msgs) {
       var el = document.getElementById('conv-messages');
-      el.innerHTML = '';
-
-      if (msgs.length === 0) {
+      
+      if (!msgs || msgs.length === 0) {
         el.innerHTML = '<div style="text-align:center;padding:20px;color:var(--text-muted)">Nessun messaggio</div>';
         return;
       }
 
-      // Rimuovi duplicati basandosi su id o combinazione created_at + messaggio
-      var seenMessages = {};
+      // Rimuovi duplicati in modo più robusto
+      var seenMessages = new Map();
       var uniqueMsgs = [];
       
-      msgs.forEach(function (msg) {
-        // Usa id se disponibile, altrimenti usa created_at + messaggio come chiave unica
-        var key = msg.id || (msg.created_at + '_' + msg.messaggio + '_' + msg.ruolo);
-        if (!seenMessages[key]) {
-          seenMessages[key] = true;
+      // Ordina per created_at per assicurarsi che i messaggi più recenti abbiano priorità
+      var sortedMsgs = msgs.slice().sort(function(a, b) {
+        var timeA = a.created_at ? new Date(a.created_at).getTime() : 0;
+        var timeB = b.created_at ? new Date(b.created_at).getTime() : 0;
+        return timeB - timeA; // Più recenti prima
+      });
+      
+      sortedMsgs.forEach(function (msg) {
+        // Crea una chiave unica più robusta
+        var msgText = (msg.messaggio || '').trim();
+        var msgTime = msg.created_at ? new Date(msg.created_at).getTime() : 0;
+        var msgRole = msg.ruolo || 'unknown';
+        
+        // Usa id se disponibile (più affidabile)
+        var key = msg.id ? 'id_' + msg.id : null;
+        
+        // Se non c'è id, crea una chiave basata su contenuto + tempo + ruolo
+        // Arrotonda il tempo al secondo per gestire piccole differenze
+        if (!key) {
+          var timeKey = Math.floor(msgTime / 1000); // Arrotonda al secondo
+          key = 'msg_' + timeKey + '_' + msgRole + '_' + msgText.substring(0, 100);
+        }
+        
+        // Controlla se questo messaggio è già stato visto
+        // Se esiste già un messaggio con la stessa chiave, salta questo
+        if (!seenMessages.has(key)) {
+          seenMessages.set(key, true);
           uniqueMsgs.push(msg);
         }
       });
+      
+      // Riordina per data crescente per la visualizzazione
+      uniqueMsgs.sort(function(a, b) {
+        var timeA = a.created_at ? new Date(a.created_at).getTime() : 0;
+        var timeB = b.created_at ? new Date(b.created_at).getTime() : 0;
+        return timeA - timeB; // Più vecchi prima
+      });
 
+      // Pulisci e renderizza
+      el.innerHTML = '';
+      
       uniqueMsgs.forEach(function (msg) {
         var row = document.createElement('div');
         var ruolo = msg.ruolo === 'assistente' ? 'assistente' : msg.ruolo;
         row.className = 'msg-row ' + ruolo;
-        // Aggiungi data-id per riferimento futuro
-        if (msg.id) row.dataset.msgId = msg.id;
+        
+        // Aggiungi data-id o data-key per riferimento futuro
+        if (msg.id) {
+          row.dataset.msgId = msg.id;
+        } else {
+          var msgText = (msg.messaggio || '').trim();
+          var msgTime = msg.created_at ? new Date(msg.created_at).getTime() : 0;
+          var timeKey = Math.floor(msgTime / 1000);
+          row.dataset.msgKey = 'msg_' + timeKey + '_' + msg.ruolo + '_' + msgText.substring(0, 50);
+        }
+        
         var labelMap = { utente: '👤 Cliente', assistente: '🤖 AI', operatore: '✉ Operatore' };
         var timeStr = msg.created_at ? new Date(msg.created_at).toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' }) : '';
         row.innerHTML = [
