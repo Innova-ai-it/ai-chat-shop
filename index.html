@@ -1314,17 +1314,24 @@
         body: JSON.stringify({ email: email, password: password })
       })
         .then(function (r) {
+          console.log('Status risposta:', r.status, r.statusText); // DEBUG
           // Leggi sempre il JSON, anche se c'è un errore
           return r.json().then(function(data) {
+            console.log('Risposta funzione:', data); // DEBUG
             if (!r.ok) {
               // Se c'è un errore, mostra il messaggio specifico dalla funzione
               throw new Error(data.error || 'Errore server: ' + r.status);
             }
             return data;
           }).catch(function(jsonError) {
+            console.error('Errore parsing JSON:', jsonError, 'Status:', r.status); // DEBUG
             // Se non riesce a parsare il JSON (es. risposta vuota), mostra errore generico
             if (!r.ok) {
-              throw new Error('Errore server: ' + r.status + ' - ' + r.statusText);
+              // Prova a leggere il testo della risposta per vedere cosa c'è
+              return r.text().then(function(text) {
+                console.error('Risposta non-JSON:', text); // DEBUG
+                throw new Error('Errore server: ' + r.status + ' - ' + r.statusText);
+              });
             }
             // Se è un errore di parsing JSON ma la risposta è ok, rilancia l'errore originale
             throw jsonError;
@@ -1357,7 +1364,10 @@
         .catch(function (err) {
           btn.disabled = false;
           btn.textContent = isRegisterMode ? 'Registrati' : 'Accedi';
-          errEl.textContent = 'Errore di connessione. Riprova.';
+          // Log dell'errore nella console per debug
+          console.error('Errore registrazione:', err);
+          // Mostra il messaggio di errore specifico (che ora contiene il messaggio dalla funzione)
+          errEl.textContent = err.message || 'Errore di connessione. Riprova.';
           errEl.style.display = 'block';
         });
     });
