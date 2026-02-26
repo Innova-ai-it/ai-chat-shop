@@ -648,20 +648,28 @@
       background: var(--surface);
       flex-shrink: 0;
       display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    #conv-reply > div:last-child {
+      display: flex;
       gap: 12px;
       align-items: flex-end;
     }
 
     #reply-input {
       flex: 1;
+      min-width: 0; /* Permette al flex di funzionare correttamente */
+      width: 100%;
       border: 1.5px solid var(--border);
       border-radius: 12px;
-      padding: 10px 14px;
+      padding: 12px 16px;
       font-size: 14px;
       outline: none;
       resize: none;
       max-height: 120px;
-      min-height: 44px;
+      min-height: 50px;
       font-family: inherit;
       transition: border-color .2s;
     }
@@ -1062,7 +1070,7 @@
             <div id="reply-email-fields" style="display: none; margin-bottom: 8px;">
               <input type="text" id="reply-subject" placeholder="Oggetto email..." style="width: 100%; padding: 8px 12px; border: 1.5px solid var(--border); border-radius: 8px; font-size: 13px; outline: none;" />
             </div>
-            <div style="display: flex; gap: 12px; align-items: flex-end;">
+            <div>
               <textarea id="reply-input" rows="1" placeholder="Scrivi una risposta..."></textarea>
               <button id="btn-send-reply">Invia risposta</button>
             </div>
@@ -1589,7 +1597,20 @@
       loadMessages(sessione.session_id, sessione.negozio_id);
     }
 
+    var isLoadingMessages = false; // Flag per evitare chiamate multiple simultanee
+
     function loadMessages(sessionId, negozioId, silent) {
+      // Evita chiamate multiple simultanee
+      if (isLoadingMessages && !silent) {
+        return;
+      }
+      
+      // Se non è la sessione attiva, non caricare
+      if (activeSession !== sessionId) {
+        return;
+      }
+      
+      isLoadingMessages = true;
       var msgsEl = document.getElementById('conv-messages');
       if (!silent) {
         msgsEl.innerHTML = '<div style="text-align:center;padding:20px;color:var(--text-muted)">Caricamento...</div>';
@@ -1601,15 +1622,22 @@
         .eq('session_id', sessionId)
         .order('created_at', { ascending: true })
         .then(function (res) {
+          isLoadingMessages = false;
           if (res.error) return;
-          renderMessages(res.data || []);
           
-          // Aggiorna timestamp ultima lettura
+          // Verifica ancora che sia la sessione attiva prima di renderizzare
           if (activeSession === sessionId) {
+            renderMessages(res.data || []);
+            
+            // Aggiorna timestamp ultima lettura
             lastReadTimestamps[sessionId] = Date.now();
             unreadCounts[sessionId] = 0;
             updateUnreadBadge(sessionId);
           }
+        })
+        .catch(function(err) {
+          isLoadingMessages = false;
+          console.error('Errore caricamento messaggi:', err);
         });
     }
 
@@ -1622,10 +1650,25 @@
         return;
       }
 
+      // Rimuovi duplicati basandosi su id o combinazione created_at + messaggio
+      var seenMessages = {};
+      var uniqueMsgs = [];
+      
       msgs.forEach(function (msg) {
+        // Usa id se disponibile, altrimenti usa created_at + messaggio come chiave unica
+        var key = msg.id || (msg.created_at + '_' + msg.messaggio + '_' + msg.ruolo);
+        if (!seenMessages[key]) {
+          seenMessages[key] = true;
+          uniqueMsgs.push(msg);
+        }
+      });
+
+      uniqueMsgs.forEach(function (msg) {
         var row = document.createElement('div');
         var ruolo = msg.ruolo === 'assistente' ? 'assistente' : msg.ruolo;
         row.className = 'msg-row ' + ruolo;
+        // Aggiungi data-id per riferimento futuro
+        if (msg.id) row.dataset.msgId = msg.id;
         var labelMap = { utente: '👤 Cliente', assistente: '🤖 AI', operatore: '✉ Operatore' };
         var timeStr = msg.created_at ? new Date(msg.created_at).toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' }) : '';
         row.innerHTML = [
