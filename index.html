@@ -6,7 +6,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Customer Service Dashboard</title>
   <!-- Configurazione (carica prima dello script principale) -->
-  <script src="config.js"></script>
+  <!-- config.js per sviluppo locale (opzionale, in .gitignore) -->
+  <script src="config.js" onerror="console.log('config.js non trovato, uso config.prod.js')"></script>
+  <!-- config.prod.js per produzione (committato) -->
+  <script src="config.prod.js"></script>
   <!-- Supabase JS Client via CDN -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
   <style>
@@ -1186,17 +1189,25 @@
 
   <script>
     // ================================================================
-    // CONFIGURAZIONE — carica da config.js (non committare config.js su GitHub)
+    // CONFIGURAZIONE — carica da config.js (locale) o config.prod.js (produzione)
     // ================================================================
-    var SUPABASE_URL = window.DASHBOARD_CONFIG?.SUPABASE_URL || '';
-    var SUPABASE_ANON_KEY = window.DASHBOARD_CONFIG?.SUPABASE_ANON_KEY || '';
-    var N8N_WEBHOOK_URL = window.DASHBOARD_CONFIG?.N8N_WEBHOOK_URL || '';
-    var ADMIN_EMAIL = window.DASHBOARD_CONFIG?.ADMIN_EMAIL || '';
+    // Priorità: config.js (sviluppo locale) > config.prod.js (produzione)
+    var SUPABASE_URL = window.DASHBOARD_CONFIG?.SUPABASE_URL || 
+                       window.DASHBOARD_CONFIG_PROD?.SUPABASE_URL || '';
+    var SUPABASE_ANON_KEY = window.DASHBOARD_CONFIG?.SUPABASE_ANON_KEY || 
+                            window.DASHBOARD_CONFIG_PROD?.SUPABASE_ANON_KEY || '';
+    var N8N_WEBHOOK_URL = window.DASHBOARD_CONFIG?.N8N_WEBHOOK_URL || 
+                          window.DASHBOARD_CONFIG_PROD?.N8N_WEBHOOK_URL || '';
+    var ADMIN_EMAIL = window.DASHBOARD_CONFIG?.ADMIN_EMAIL || 
+                      window.DASHBOARD_CONFIG_PROD?.ADMIN_EMAIL || '';
     
     // Verifica che la configurazione sia presente
     if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
-      console.error('ERRORE: Configurazione mancante! Assicurati che config.js esista e contenga i valori corretti.');
-      alert('Errore di configurazione: file config.js mancante o incompleto. Controlla la console per dettagli.');
+      console.error('ERRORE: Configurazione mancante!');
+      // Mostra alert solo in sviluppo locale
+      if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+        alert('Errore di configurazione: file config.js o config.prod.js mancante. Controlla la console.');
+      }
     }
 
     // ================================================================
