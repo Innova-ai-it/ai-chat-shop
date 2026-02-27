@@ -132,6 +132,54 @@
       cursor: pointer;
     }
 
+    /* Toggle switch per attivo/inattivo */
+    .toggle-switch {
+      position: relative;
+      display: inline-block;
+      width: 50px;
+      height: 26px;
+      margin: 0;
+      cursor: pointer;
+    }
+
+    .toggle-switch input {
+      opacity: 0;
+      width: 0;
+      height: 0;
+    }
+
+    .toggle-slider {
+      position: absolute;
+      cursor: pointer;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background-color: #ccc;
+      transition: .4s;
+      border-radius: 26px;
+    }
+
+    .toggle-slider:before {
+      position: absolute;
+      content: "";
+      height: 20px;
+      width: 20px;
+      left: 3px;
+      bottom: 3px;
+      background-color: white;
+      transition: .4s;
+      border-radius: 50%;
+    }
+
+    .toggle-switch input:checked + .toggle-slider {
+      background-color: var(--primary);
+    }
+
+    .toggle-switch input:checked + .toggle-slider:before {
+      transform: translateX(24px);
+    }
+
     .btn-primary {
       width: 100%;
       padding: 13px;
@@ -1168,6 +1216,7 @@
                   <th>Email</th>
                   <th>Ruolo</th>
                   <th>Stato Registrazione</th>
+                  <th>Stato</th>
                   <th>Data Creazione</th>
                   <th>Azioni</th>
                 </tr>
@@ -1205,10 +1254,21 @@
           <strong>Stato:</strong> <span id="o-status-text"></span><br>
           <small id="o-status-detail"></small>
         </div>
+        <div id="o-attivo-section" style="display: none; margin-bottom: 16px;">
+          <div class="form-group" style="display: flex; align-items: center; justify-content: space-between; padding: 12px; background: var(--bg); border-radius: 8px;">
+            <div>
+              <label style="margin: 0; font-weight: 600;">Stato Account</label>
+              <small style="display: block; color: var(--text-muted); font-size: 12px; margin-top: 4px;">Gli operatori disattivati non possono accedere alla dashboard</small>
+            </div>
+            <label class="toggle-switch">
+              <input type="checkbox" id="o-attivo" />
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+        </div>
         <div class="modal-footer">
           <button type="button" class="btn-cancel" id="btn-cancel-modal-operatore">Annulla</button>
           <button type="submit" class="btn-save" id="btn-save-operatore">Salva Operatore</button>
-          <button type="button" class="btn-cancel" id="btn-delete-operatore" style="display: none; background: #ef4444; color: white; margin-left: auto;">Elimina</button>
         </div>
       </form>
     </div>
@@ -1466,11 +1526,22 @@
     function loadUserNegozio() {
       supabase
         .from('operatori')
-        .select('negozio_id, ruolo, nome, negozi(nome)')
+        .select('negozio_id, ruolo, nome, attivo, negozi(nome)')
         .eq('user_id', currentUser.id)
         .single()
         .then(function (res) {
           if (res.data) {
+            // Verifica che l'operatore sia attivo
+            if (res.data.attivo === false) {
+              showToast('Il tuo account è stato disattivato. Contatta l\'amministratore.', true);
+              supabase.auth.signOut().then(function() {
+                setTimeout(function() {
+                  location.reload();
+                }, 2000);
+              });
+              return;
+            }
+            
             currentNegozioId = res.data.negozio_id;
             currentUserRuolo = res.data.ruolo;
             currentUserNome = res.data.nome || currentUser.email.split('@')[0];
@@ -2139,7 +2210,7 @@
       // Carica operatori del negozio
       supabase
         .from('operatori')
-        .select('id, nome, email, ruolo, password_hash, user_id, created_at')
+        .select('id, nome, email, ruolo, password_hash, user_id, created_at, attivo')
         .eq('negozio_id', currentNegozioId)
         .order('created_at', { ascending: false })
         .then(function (r) {
@@ -2155,8 +2226,15 @@
 
           // Statistiche
           var totali = operatori.length;
-          var attivi = operatori.filter(function (o) { return o.password_hash !== null; }).length;
-          var pending = operatori.filter(function (o) { return o.password_hash === null; }).length;
+          var attivi = operatori.filter(function (o) { 
+            return o.password_hash !== null && (o.attivo !== false); 
+          }).length;
+          var pending = operatori.filter(function (o) { 
+            return o.password_hash === null && (o.attivo !== false); 
+          }).length;
+          var disattivati = operatori.filter(function (o) { 
+            return o.attivo === false; 
+          }).length;
 
           document.getElementById('stat-operatori-totali').textContent = totali;
           document.getElementById('stat-operatori-attivi').textContent = attivi;
@@ -2174,28 +2252,42 @@
             });
 
           if (operatori.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 24px; color: var(--text-muted);">Nessun operatore ancora. Aggiungi il primo operatore!</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; padding: 24px; color: var(--text-muted);">Nessun operatore ancora. Aggiungi il primo operatore!</td></tr>';
             return;
           }
 
           operatori.forEach(function (op) {
             var tr = document.createElement('tr');
             var isRegistrato = op.password_hash !== null;
+            var isAttivo = op.attivo !== false; // Default true se NULL
+            
             var statoReg = isRegistrato 
               ? '<span style="color: var(--success); font-weight: 600;">✓ Registrato</span>'
               : '<span style="color: var(--warning); font-weight: 600;">⏳ In attesa</span>';
+            
+            var statoAttivo = isAttivo
+              ? '<span class="status-dot attivo"></span> Attivo'
+              : '<span class="status-dot inattivo"></span> Disattivato';
+            
             var ruoloBadge = op.ruolo === 'admin' 
               ? '<span style="background: var(--primary); color: white; padding: 2px 8px; border-radius: 4px; font-size: 11px;">Admin</span>'
               : '<span style="background: var(--bg); color: var(--text-muted); padding: 2px 8px; border-radius: 4px; font-size: 11px;">Operatore</span>';
+            
             var dataCreazione = op.created_at 
               ? new Date(op.created_at).toLocaleDateString('it-IT', { day: '2-digit', month: '2-digit', year: 'numeric' })
               : '—';
+
+            // Stile riga se disattivato
+            if (!isAttivo) {
+              tr.style.opacity = '0.6';
+            }
 
             tr.innerHTML = [
               '<td><strong>' + escHtml(op.nome || '—') + '</strong></td>',
               '<td>' + escHtml(op.email || '—') + '</td>',
               '<td>' + ruoloBadge + '</td>',
               '<td>' + statoReg + '</td>',
+              '<td>' + statoAttivo + '</td>',
               '<td>' + dataCreazione + '</td>',
               '<td><button class="btn-action" onclick="editOperatore(\'' + op.id + '\')" style="padding: 4px 12px; font-size: 12px;">Modifica</button></td>'
             ].join('');
@@ -2228,22 +2320,27 @@
           document.getElementById('o-email').value = op.email || '';
           document.getElementById('o-ruolo').value = op.ruolo || 'operatore';
           
-          // Mostra info stato
+          // Mostra info stato registrazione
           var statusInfo = document.getElementById('o-status-info');
           var statusText = document.getElementById('o-status-text');
           var statusDetail = document.getElementById('o-status-detail');
-          var deleteBtn = document.getElementById('btn-delete-operatore');
+          var attivoSection = document.getElementById('o-attivo-section');
+          var attivoCheckbox = document.getElementById('o-attivo');
           
           if (op.password_hash) {
             statusText.textContent = 'Registrato';
             statusDetail.textContent = 'L\'operatore ha completato la registrazione e può accedere alla dashboard.';
-            deleteBtn.style.display = 'none'; // Non permettere eliminazione se registrato
           } else {
             statusText.textContent = 'In attesa di registrazione';
             statusDetail.textContent = 'L\'operatore deve ancora completare la registrazione con email e password.';
-            deleteBtn.style.display = 'inline-block';
           }
           
+          // Imposta stato attivo/inattivo
+          var isAttivo = op.attivo !== false; // Default true se NULL
+          attivoCheckbox.checked = isAttivo;
+          
+          // Mostra sezione attivo solo se operatore esiste (modifica)
+          attivoSection.style.display = 'block';
           statusInfo.style.display = 'block';
           document.getElementById('modal-operatore').classList.add('visible');
         });
@@ -2261,7 +2358,7 @@
         document.getElementById('modal-operatore-title').textContent = '➕ Nuovo Operatore';
         document.getElementById('form-operatore').reset();
         document.getElementById('o-status-info').style.display = 'none';
-        document.getElementById('btn-delete-operatore').style.display = 'none';
+        document.getElementById('o-attivo-section').style.display = 'none';
         document.getElementById('modal-operatore').classList.add('visible');
         return;
       }
@@ -2273,31 +2370,6 @@
         return;
       }
 
-      // Elimina operatore
-      if (e.target && e.target.id === 'btn-delete-operatore') {
-        if (!editingOperatoreId) return;
-        
-        if (!confirm('Sei sicuro di voler eliminare questo operatore? L\'operazione non può essere annullata.')) {
-          return;
-        }
-
-        supabase
-          .from('operatori')
-          .delete()
-          .eq('id', editingOperatoreId)
-          .then(function (res) {
-            if (res.error) {
-              showToast('Errore: ' + res.error.message, true);
-            } else {
-              showToast('Operatore eliminato con successo!');
-              document.getElementById('modal-operatore').classList.remove('visible');
-              document.getElementById('form-operatore').reset();
-              editingOperatoreId = null;
-              loadOperatori();
-            }
-          });
-        return;
-      }
 
       // Click fuori dal modal per chiuderlo
       if (e.target && e.target.id === 'modal-operatore') {
@@ -2326,19 +2398,23 @@
           return;
         }
 
+        var attivoCheckbox = document.getElementById('o-attivo');
+        var attivo = editingOperatoreId ? attivoCheckbox.checked : true; // Nuovi operatori sono sempre attivi
+
         var data = {
           negozio_id: currentNegozioId,
           nome: nome,
           email: email,
           ruolo: ruolo,
           password_hash: null, // L'operatore completerà la registrazione
-          user_id: null
+          user_id: null,
+          attivo: attivo
         };
 
         var promise;
         if (editingOperatoreId) {
           // Modifica operatore esistente
-          // Non permettere modifica se è già registrato (solo nome e ruolo)
+          // Non permettere modifica se è già registrato (solo nome, ruolo e attivo)
           supabase
             .from('operatori')
             .select('password_hash')
@@ -2346,16 +2422,16 @@
             .single()
             .then(function (checkRes) {
               if (checkRes.data && checkRes.data.password_hash) {
-                // Se registrato, permettere solo modifica nome e ruolo
+                // Se registrato, permettere modifica nome, ruolo e attivo
                 promise = supabase
                   .from('operatori')
-                  .update({ nome: nome, ruolo: ruolo })
+                  .update({ nome: nome, ruolo: ruolo, attivo: attivo })
                   .eq('id', editingOperatoreId);
               } else {
                 // Se non registrato, permettere modifica completa
                 promise = supabase
                   .from('operatori')
-                  .update({ nome: nome, email: email, ruolo: ruolo })
+                  .update({ nome: nome, email: email, ruolo: ruolo, attivo: attivo })
                   .eq('id', editingOperatoreId);
               }
               
@@ -2391,6 +2467,7 @@
         }
       }
     });
+
 
     // ================================================================
     // TABS
