@@ -55,34 +55,32 @@ serve(async (req) => {
       )
     }
 
-    // Hash della password usando scrypt (compatibile con Deno Edge Functions)
+    // Hash della password usando scrypt
     const salt = crypto.getRandomValues(new Uint8Array(16))
     const passwordHashBytes = scrypt(password, salt, { N: 16384, r: 8, p: 1, dkLen: 64 })
     const passwordHash = bytesToHex(salt) + ':' + bytesToHex(passwordHashBytes)
 
-    // Prova prima a creare l'utente in Supabase Auth
-    let authUser
+    // Gestione utente Auth
     let userId
     
-    const { data: newAuthUser, error: authError } = await supabaseAdmin.auth.admin.createUser({
-      email: email.toLowerCase(),
-      email_confirm: true,
-      password: password
-    })
-
-    if (authError) {
-      // Se l'errore indica che l'utente esiste già, recuperalo e aggiorna la password
-      if (authError.message && (
-        authError.message.includes('already registered') || 
-        authError.message.includes('already exists') ||
-        authError.message.includes('User already registered')
-      )) {
-        // Recupera l'utente esistente cercando per email
-        const { data: usersList, error: listError } = await supabaseAdmin.auth.admin.listUsers()
+    // CASO 1: L'operatore ha già un user_id (utente esiste in Auth ma registrazione incompleta)
+    if (operatore.user_id) {
+      userId = operatore.user_id
+      
+      // Verifica che l'utente esista ancora in Auth
+      const { data: existingAuthUser, error: getUserError } = await supabaseAdmin.auth.admin.getUserById(userId)
+      
+      if (getUserError || !existingAuthUser.user) {
+        // Se l'utente non esiste più in Auth, crealo
+        const { data: newAuthUser, error: createError } = await supabaseAdmin.auth.admin.createUser({
+          email: email.toLowerCase(),
+          email_confirm: true,
+          password: password
+        })
         
-        if (listError) {
+        if (createError || !newAuthUser.user) {
           return new Response(
-            JSON.stringify({ error: 'Errore nel recupero utente esistente: ' + listError.message }),
+            JSON.stringify({ error: 'Errore nella creazione account: ' + (createError?.message || 'Sconosciuto') }),
             { 
               status: 500,
               headers: { ...corsHeaders, 'Content-Type': 'application/json' }
@@ -90,18 +88,44 @@ serve(async (req) => {
           )
         }
         
-        const existingUser = usersList?.users?.find(u => u.email?.toLowerCase() === email.toLowerCase())
+        userId = newAuthUser.user.id
+      } else {
+        // Utente esiste, aggiorna solo la password
+        const { data: updatedUser, error: updateError } = await supabaseAdmin.auth.admin.updateUserById(
+          userId,
+          { password: password }
+        )
         
-        if (existingUser) {
-          // Aggiorna la password dell'utente esistente
-          const { data: updatedUser, error: updateError } = await supabaseAdmin.auth.admin.updateUserById(
-            existingUser.id,
-            { password: password }
+        if (updateError || !updatedUser.user) {
+          return new Response(
+            JSON.stringify({ error: 'Errore nell\'aggiornamento password: ' + (updateError?.message || 'Sconosciuto') }),
+            { 
+              status: 500,
+              headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+            }
           )
+        }
+      }
+    } 
+    // CASO 2: L'operatore NON ha user_id (prima registrazione)
+    else {
+      // Prova a creare l'utente in Auth
+      const { data: newAuthUser, error: authError } = await supabaseAdmin.auth.admin.createUser({
+        email: email.toLowerCase(),
+        email_confirm: true,
+        password: password
+      })
+
+      if (authError) {
+        // Se l'errore indica che l'utente esiste già, recuperalo
+        const errorMsg = authError.message?.toLowerCase() || ''
+        if (errorMsg.includes('already') || errorMsg.includes('exists') || errorMsg.includes('registered')) {
+          // Cerca l'utente per email
+          const { data: usersList, error: listError } = await supabaseAdmin.auth.admin.listUsers()
           
-          if (updateError || !updatedUser.user) {
+          if (listError) {
             return new Response(
-              JSON.stringify({ error: 'Errore nell\'aggiornamento password: ' + (updateError?.message || 'Sconosciuto') }),
+              JSON.stringify({ error: 'Errore nel recupero utente esistente: ' + listError.message }),
               { 
                 status: 500,
                 headers: { ...corsHeaders, 'Content-Type': 'application/json' }
@@ -109,49 +133,67 @@ serve(async (req) => {
             )
           }
           
-          authUser = { user: updatedUser.user }
-          userId = existingUser.id
+          const existingUser = usersList?.users?.find(u => u.email?.toLowerCase() === email.toLowerCase())
+          
+          if (existingUser) {
+            userId = existingUser.id
+            // Aggiorna la password
+            const { data: updatedUser, error: updateError } = await supabaseAdmin.auth.admin.updateUserById(
+              userId,
+              { password: password }
+            )
+            
+            if (updateError || !updatedUser.user) {
+              return new Response(
+                JSON.stringify({ error: 'Errore nell\'aggiornamento password: ' + (updateError?.message || 'Sconosciuto') }),
+                { 
+                  status: 500,
+                  headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+                }
+              )
+            }
+          } else {
+            return new Response(
+              JSON.stringify({ error: 'Errore: utente già registrato ma non trovato. Contatta l\'amministratore.' }),
+              { 
+                status: 500,
+                headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+              }
+            )
+          }
         } else {
-          // Utente non trovato nonostante l'errore - situazione anomala
+          // Altro tipo di errore
           return new Response(
-            JSON.stringify({ error: 'Errore: utente già registrato ma non trovato nel sistema. Contatta l\'amministratore.' }),
+            JSON.stringify({ error: 'Errore nella creazione account: ' + authError.message }),
             { 
               status: 500,
               headers: { ...corsHeaders, 'Content-Type': 'application/json' }
             }
           )
         }
-      } else {
-        // Altro tipo di errore
+      } else if (!newAuthUser.user) {
         return new Response(
-          JSON.stringify({ error: 'Errore nella creazione account: ' + authError.message }),
+          JSON.stringify({ error: 'Errore nella creazione account: utente non creato' }),
           { 
             status: 500,
             headers: { ...corsHeaders, 'Content-Type': 'application/json' }
           }
         )
+      } else {
+        // Utente creato con successo
+        userId = newAuthUser.user.id
       }
-    } else if (!newAuthUser.user) {
-      return new Response(
-        JSON.stringify({ error: 'Errore nella creazione account: utente non creato' }),
-        { 
-          status: 500,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-        }
-      )
-    } else {
-      // Utente creato con successo
-      authUser = newAuthUser
-      userId = newAuthUser.user.id
     }
 
-    // Aggiorna operatori con password_hash e user_id
+    // Aggiorna operatori con password_hash e user_id (se non era già presente)
+    const updateData: any = { password_hash: passwordHash }
+    if (!operatore.user_id) {
+      updateData.user_id = userId
+    }
+    
     const { error: updateError } = await supabaseAdmin
       .from('operatori')
-      .update({ 
-        password_hash: passwordHash,
-        user_id: userId
-      })
+      .update(updateData)
       .eq('id', operatore.id)
 
     if (updateError) {
@@ -206,4 +248,3 @@ serve(async (req) => {
     )
   }
 })
-
