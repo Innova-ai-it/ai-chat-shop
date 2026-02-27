@@ -1133,49 +1133,6 @@
 
       <!-- ADMIN VIEW -->
       <div id="admin-view">
-        <!-- Super Admin: Gestione Negozi -->
-        <div id="super-admin-section" style="display: none;">
-          <div class="admin-header">
-            <h2>Gestione Negozi</h2>
-            <button class="btn-add" id="btn-add-negozio">+ Aggiungi Negozio</button>
-          </div>
-          <div class="stats-grid" id="admin-stats">
-            <div class="stat-card">
-              <div class="stat-label">Negozi Attivi</div>
-              <div class="stat-value" id="stat-negozi">—</div>
-            </div>
-            <div class="stat-card">
-              <div class="stat-label">Conversazioni Oggi</div>
-              <div class="stat-value" id="stat-conv">—</div>
-            </div>
-            <div class="stat-card">
-              <div class="stat-label">In Escalation</div>
-              <div class="stat-value" id="stat-esc">—</div>
-            </div>
-            <div class="stat-card">
-              <div class="stat-label">Tasso Risoluzione AI</div>
-              <div class="stat-value" id="stat-ai">—</div>
-              <div class="stat-sub">% risolte senza operatore</div>
-            </div>
-          </div>
-          <div class="negozi-table">
-            <div class="table-header">Lista Negozi</div>
-            <table>
-              <thead>
-                <tr>
-                  <th>Nome</th>
-                  <th>Shopify URL</th>
-                  <th>Email Titolare</th>
-                  <th>Stato</th>
-                  <th>Conv. Totali</th>
-                  <th>Escalation</th>
-                </tr>
-              </thead>
-              <tbody id="negozi-tbody"></tbody>
-            </table>
-          </div>
-        </div>
-
         <!-- Admin Negozio: Gestione Operatori -->
         <div id="admin-negozio-section" style="display: none;">
           <div class="admin-header">
@@ -1221,25 +1178,6 @@
 
     </div><!-- /app-body -->
   </div><!-- /screen-app -->
-
-  <!-- Modal Aggiungi Negozio -->
-  <div id="modal-negozio">
-    <div class="modal-card">
-      <h3>➕ Nuovo Negozio</h3>
-      <form id="form-negozio">
-        <div class="form-group"><label>Nome Negozio *</label><input type="text" id="n-nome" required /></div>
-        <div class="form-group"><label>Shopify URL</label><input type="text" id="n-shopify"
-            placeholder="mio-negozio.myshopify.com" /></div>
-        <div class="form-group"><label>Email Titolare</label><input type="email" id="n-email" /></div>
-        <div class="form-group"><label>Google Doc ID (manuale)</label><input type="text" id="n-gdoc" /></div>
-        <div class="form-group"><label>Shopify API Key</label><input type="text" id="n-apikey" /></div>
-        <div class="modal-footer">
-          <button type="button" class="btn-cancel" id="btn-cancel-modal">Annulla</button>
-          <button type="submit" class="btn-save">Salva Negozio</button>
-        </div>
-      </form>
-    </div>
-  </div>
 
   <!-- Modal Aggiungi/Modifica Operatore -->
   <div id="modal-operatore">
@@ -1304,7 +1242,6 @@
     var currentUser = null;
     var currentNegozioId = null;
     var isAdmin = false;
-    var isSuperAdmin = false;
     var currentUserNome = null;
     var currentUserRuolo = null;
     var activeSession = null;
@@ -1511,12 +1448,6 @@
       document.getElementById('screen-login').style.display = 'none';
       document.getElementById('screen-app').style.display = 'flex';
 
-      // Controlla se super admin (case insensitive)
-      isSuperAdmin = (user.email.toLowerCase() === ADMIN_EMAIL.toLowerCase());
-      if (isSuperAdmin) {
-        document.getElementById('tab-admin').style.display = 'inline';
-      }
-
       // Carica negozio corrente e dati operatore
       loadUserNegozio();
     }
@@ -1531,16 +1462,6 @@
     // CARICA NEGOZIO UTENTE
     // ================================================================
     function loadUserNegozio() {
-      if (isSuperAdmin) {
-        // Super admin non ha negozio associato, può vedere tutto
-        currentUserNome = 'Super Admin';
-        currentUserRuolo = 'super_admin';
-        isAdmin = true; // Super admin può accedere alla vista admin
-        document.getElementById('header-user-name').textContent = currentUserNome;
-        startApp();
-        return;
-      }
-
       supabase
         .from('operatori')
         .select('negozio_id, ruolo, nome, negozi(nome)')
@@ -1552,7 +1473,7 @@
             currentUserRuolo = res.data.ruolo;
             currentUserNome = res.data.nome || currentUser.email.split('@')[0];
             
-            // Admin negozio può vedere la vista admin (ma solo per il suo negozio)
+            // Admin negozio può vedere la vista admin
             isAdmin = (res.data.ruolo === 'admin');
             if (isAdmin) {
               document.getElementById('tab-admin').style.display = 'inline';
@@ -2197,65 +2118,12 @@
     });
 
     // ================================================================
-    // ADMIN: STATISTICHE E NEGOZI
+    // ADMIN: GESTIONE OPERATORI
     // ================================================================
     function loadAdminStats() {
-      if (isSuperAdmin) {
-        // Super Admin: mostra gestione negozi
-        document.getElementById('super-admin-section').style.display = 'block';
-        document.getElementById('admin-negozio-section').style.display = 'none';
-        
-        // Conta negozi attivi
-        supabase.from('negozi').select('id', { count: 'exact' }).eq('attivo', true)
-          .then(function (r) {
-            document.getElementById('stat-negozi').textContent = r.count || 0;
-          });
-
-        // Conversazioni di oggi
-        var oggi = new Date(); oggi.setHours(0, 0, 0, 0);
-        supabase.from('conversazioni').select('id', { count: 'exact' }).gte('created_at', oggi.toISOString())
-          .then(function (r) {
-            document.getElementById('stat-conv').textContent = r.count || 0;
-          });
-
-        // Escalation attive
-        supabase.from('sessioni').select('id', { count: 'exact' }).eq('stato', 'escalation')
-          .then(function (r) {
-            document.getElementById('stat-esc').textContent = r.count || 0;
-          });
-
-        // Tasso risoluzione AI
-        supabase.from('sessioni').select('stato').then(function (r) {
-          if (!r.data || r.data.length === 0) return;
-          var total = r.data.length;
-          var aiRisolte = r.data.filter(function (s) { return s.stato !== 'escalation'; }).length;
-          document.getElementById('stat-ai').textContent = Math.round(aiRisolte / total * 100) + '%';
-        });
-
-        // Lista negozi
-        supabase.from('negozi').select('*')
-          .then(function (r) {
-            var tbody = document.getElementById('negozi-tbody');
-            tbody.innerHTML = '';
-            if (!r.data) return;
-            r.data.forEach(function (n) {
-              var tr = document.createElement('tr');
-              tr.innerHTML = [
-                '<td><strong>' + escHtml(n.nome) + '</strong></td>',
-                '<td>' + escHtml(n.shopify_url || '—') + '</td>',
-                '<td>' + escHtml(n.email_titolare || '—') + '</td>',
-                '<td><span class="status-dot ' + (n.attivo ? 'attivo' : 'inattivo') + '"></span>' + (n.attivo ? 'Attivo' : 'Inattivo') + '</td>',
-                '<td>—</td>',
-                '<td>—</td>'
-              ].join('');
-              tbody.appendChild(tr);
-            });
-          });
-      } else if (isAdmin && currentNegozioId) {
-        // Admin Negozio: mostra gestione operatori
-        document.getElementById('super-admin-section').style.display = 'none';
+      // Solo Admin Negozio può vedere questa sezione
+      if (isAdmin && currentNegozioId) {
         document.getElementById('admin-negozio-section').style.display = 'block';
-        
         loadOperatori();
       }
     }
@@ -2379,41 +2247,6 @@
         });
     }
 
-    // ================================================================
-    // MODAL AGGIUNGI NEGOZIO
-    // ================================================================
-    document.getElementById('btn-add-negozio').addEventListener('click', function () {
-      document.getElementById('modal-negozio').classList.add('visible');
-    });
-    document.getElementById('btn-cancel-modal').addEventListener('click', function () {
-      document.getElementById('modal-negozio').classList.remove('visible');
-    });
-    document.getElementById('modal-negozio').addEventListener('click', function (e) {
-      if (e.target === this) this.classList.remove('visible');
-    });
-
-    document.getElementById('form-negozio').addEventListener('submit', function (e) {
-      e.preventDefault();
-      var data = {
-        nome: document.getElementById('n-nome').value.trim(),
-        shopify_url: document.getElementById('n-shopify').value.trim() || null,
-        email_titolare: document.getElementById('n-email').value.trim() || null,
-        google_doc_id: document.getElementById('n-gdoc').value.trim() || null,
-        shopify_api_key: document.getElementById('n-apikey').value.trim() || null,
-        attivo: true
-      };
-
-      supabase.from('negozi').insert(data).then(function (res) {
-        if (res.error) {
-          showToast('Errore: ' + res.error.message, true);
-        } else {
-          showToast('Negozio aggiunto con successo!');
-          document.getElementById('modal-negozio').classList.remove('visible');
-          document.getElementById('form-negozio').reset();
-          loadAdminStats();
-        }
-      });
-    });
 
     // ================================================================
     // MODAL AGGIUNGI/MODIFICA OPERATORE
