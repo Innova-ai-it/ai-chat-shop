@@ -868,8 +868,9 @@
       background: var(--text-muted);
     }
 
-    /* Modal aggiungi negozio */
-    #modal-negozio {
+    /* Modal */
+    #modal-negozio,
+    #modal-operatore {
       position: fixed;
       inset: 0;
       background: rgba(0, 0, 0, 0.4);
@@ -879,7 +880,8 @@
       z-index: 1000;
     }
 
-    #modal-negozio.visible {
+    #modal-negozio.visible,
+    #modal-operatore.visible {
       display: flex;
     }
 
