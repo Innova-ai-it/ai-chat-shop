@@ -109,7 +109,8 @@
       margin-bottom: 6px;
     }
 
-    .form-group input {
+    .form-group input,
+    .form-group select {
       width: 100%;
       padding: 11px 14px;
       border: 1.5px solid var(--border);
@@ -117,10 +118,18 @@
       font-size: 14px;
       outline: none;
       transition: border-color .2s;
+      background: var(--surface);
+      color: var(--text);
+      font-family: inherit;
     }
 
-    .form-group input:focus {
+    .form-group input:focus,
+    .form-group select:focus {
       border-color: var(--primary);
+    }
+
+    .form-group select {
+      cursor: pointer;
     }
 
     .btn-primary {
@@ -1124,44 +1133,89 @@
 
       <!-- ADMIN VIEW -->
       <div id="admin-view">
-        <div class="admin-header">
-          <h2>Gestione Negozi</h2>
-          <button class="btn-add" id="btn-add-negozio">+ Aggiungi Negozio</button>
+        <!-- Super Admin: Gestione Negozi -->
+        <div id="super-admin-section" style="display: none;">
+          <div class="admin-header">
+            <h2>Gestione Negozi</h2>
+            <button class="btn-add" id="btn-add-negozio">+ Aggiungi Negozio</button>
+          </div>
+          <div class="stats-grid" id="admin-stats">
+            <div class="stat-card">
+              <div class="stat-label">Negozi Attivi</div>
+              <div class="stat-value" id="stat-negozi">—</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-label">Conversazioni Oggi</div>
+              <div class="stat-value" id="stat-conv">—</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-label">In Escalation</div>
+              <div class="stat-value" id="stat-esc">—</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-label">Tasso Risoluzione AI</div>
+              <div class="stat-value" id="stat-ai">—</div>
+              <div class="stat-sub">% risolte senza operatore</div>
+            </div>
+          </div>
+          <div class="negozi-table">
+            <div class="table-header">Lista Negozi</div>
+            <table>
+              <thead>
+                <tr>
+                  <th>Nome</th>
+                  <th>Shopify URL</th>
+                  <th>Email Titolare</th>
+                  <th>Stato</th>
+                  <th>Conv. Totali</th>
+                  <th>Escalation</th>
+                </tr>
+              </thead>
+              <tbody id="negozi-tbody"></tbody>
+            </table>
+          </div>
         </div>
-        <div class="stats-grid" id="admin-stats">
-          <div class="stat-card">
-            <div class="stat-label">Negozi Attivi</div>
-            <div class="stat-value" id="stat-negozi">—</div>
+
+        <!-- Admin Negozio: Gestione Operatori -->
+        <div id="admin-negozio-section" style="display: none;">
+          <div class="admin-header">
+            <h2>Gestione Operatori</h2>
+            <button class="btn-add" id="btn-add-operatore">+ Aggiungi Operatore</button>
           </div>
-          <div class="stat-card">
-            <div class="stat-label">Conversazioni Oggi</div>
-            <div class="stat-value" id="stat-conv">—</div>
+          <div class="stats-grid" id="operatori-stats">
+            <div class="stat-card">
+              <div class="stat-label">Operatori Totali</div>
+              <div class="stat-value" id="stat-operatori-totali">—</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-label">Operatori Attivi</div>
+              <div class="stat-value" id="stat-operatori-attivi">—</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-label">In Attesa Registrazione</div>
+              <div class="stat-value" id="stat-operatori-pending">—</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-label">Conversazioni Oggi</div>
+              <div class="stat-value" id="stat-conv-negozio">—</div>
+            </div>
           </div>
-          <div class="stat-card">
-            <div class="stat-label">In Escalation</div>
-            <div class="stat-value" id="stat-esc">—</div>
+          <div class="negozi-table">
+            <div class="table-header">Lista Operatori</div>
+            <table>
+              <thead>
+                <tr>
+                  <th>Nome</th>
+                  <th>Email</th>
+                  <th>Ruolo</th>
+                  <th>Stato Registrazione</th>
+                  <th>Data Creazione</th>
+                  <th>Azioni</th>
+                </tr>
+              </thead>
+              <tbody id="operatori-tbody"></tbody>
+            </table>
           </div>
-          <div class="stat-card">
-            <div class="stat-label">Tasso Risoluzione AI</div>
-            <div class="stat-value" id="stat-ai">—</div>
-            <div class="stat-sub">% risolte senza operatore</div>
-          </div>
-        </div>
-        <div class="negozi-table">
-          <div class="table-header">Lista Negozi</div>
-          <table>
-            <thead>
-              <tr>
-                <th>Nome</th>
-                <th>Shopify URL</th>
-                <th>Email Titolare</th>
-                <th>Stato</th>
-                <th>Conv. Totali</th>
-                <th>Escalation</th>
-              </tr>
-            </thead>
-            <tbody id="negozi-tbody"></tbody>
-          </table>
         </div>
       </div>
 
@@ -1182,6 +1236,39 @@
         <div class="modal-footer">
           <button type="button" class="btn-cancel" id="btn-cancel-modal">Annulla</button>
           <button type="submit" class="btn-save">Salva Negozio</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal Aggiungi/Modifica Operatore -->
+  <div id="modal-operatore">
+    <div class="modal-card">
+      <h3 id="modal-operatore-title">➕ Nuovo Operatore</h3>
+      <form id="form-operatore">
+        <div class="form-group">
+          <label>Nome Operatore *</label>
+          <input type="text" id="o-nome" required placeholder="Mario Rossi" />
+        </div>
+        <div class="form-group">
+          <label>Email *</label>
+          <input type="email" id="o-email" required placeholder="operatore@example.com" />
+        </div>
+        <div class="form-group">
+          <label>Ruolo *</label>
+          <select id="o-ruolo" required>
+            <option value="operatore">Operatore</option>
+            <option value="admin">Admin Negozio</option>
+          </select>
+        </div>
+        <div id="o-status-info" style="display: none; padding: 12px; background: #f0f9ff; border-radius: 8px; margin-bottom: 16px; font-size: 13px; color: #0369a1;">
+          <strong>Stato:</strong> <span id="o-status-text"></span><br>
+          <small id="o-status-detail"></small>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn-cancel" id="btn-cancel-modal-operatore">Annulla</button>
+          <button type="submit" class="btn-save" id="btn-save-operatore">Salva Operatore</button>
+          <button type="button" class="btn-cancel" id="btn-delete-operatore" style="display: none; background: #ef4444; color: white; margin-left: auto;">Elimina</button>
         </div>
       </form>
     </div>
@@ -1217,6 +1304,9 @@
     var currentUser = null;
     var currentNegozioId = null;
     var isAdmin = false;
+    var isSuperAdmin = false;
+    var currentUserNome = null;
+    var currentUserRuolo = null;
     var activeSession = null;
     var activeFilter = 'escalation';
     var activeChannelFilter = 'all'; // 'all', 'chat', 'email'
@@ -1420,15 +1510,14 @@
       currentUser = user;
       document.getElementById('screen-login').style.display = 'none';
       document.getElementById('screen-app').style.display = 'flex';
-      document.getElementById('header-user-name').textContent = user.email.split('@')[0];
 
-      // Controlla se admin (case insensitive)
-      isAdmin = (user.email.toLowerCase() === ADMIN_EMAIL.toLowerCase());
-      if (isAdmin) {
+      // Controlla se super admin (case insensitive)
+      isSuperAdmin = (user.email.toLowerCase() === ADMIN_EMAIL.toLowerCase());
+      if (isSuperAdmin) {
         document.getElementById('tab-admin').style.display = 'inline';
       }
 
-      // Carica negozio corrente
+      // Carica negozio corrente e dati operatore
       loadUserNegozio();
     }
 
@@ -1442,15 +1531,39 @@
     // CARICA NEGOZIO UTENTE
     // ================================================================
     function loadUserNegozio() {
+      if (isSuperAdmin) {
+        // Super admin non ha negozio associato, può vedere tutto
+        currentUserNome = 'Super Admin';
+        currentUserRuolo = 'super_admin';
+        isAdmin = true; // Super admin può accedere alla vista admin
+        document.getElementById('header-user-name').textContent = currentUserNome;
+        startApp();
+        return;
+      }
+
       supabase
         .from('operatori')
-        .select('negozio_id, ruolo, negozi(nome)')
+        .select('negozio_id, ruolo, nome, negozi(nome)')
         .eq('user_id', currentUser.id)
         .single()
         .then(function (res) {
           if (res.data) {
             currentNegozioId = res.data.negozio_id;
-            // Nome negozio rimosso dall'header come richiesto
+            currentUserRuolo = res.data.ruolo;
+            currentUserNome = res.data.nome || currentUser.email.split('@')[0];
+            
+            // Admin negozio può vedere la vista admin (ma solo per il suo negozio)
+            isAdmin = (res.data.ruolo === 'admin');
+            if (isAdmin) {
+              document.getElementById('tab-admin').style.display = 'inline';
+            }
+            
+            // Mostra nome nell'header
+            document.getElementById('header-user-name').textContent = currentUserNome;
+          } else {
+            // Fallback se non trova operatore
+            currentUserNome = currentUser.email.split('@')[0];
+            document.getElementById('header-user-name').textContent = currentUserNome;
           }
           startApp();
         });
@@ -2087,51 +2200,182 @@
     // ADMIN: STATISTICHE E NEGOZI
     // ================================================================
     function loadAdminStats() {
-      // Conta negozi attivi
-      supabase.from('negozi').select('id', { count: 'exact' }).eq('attivo', true)
-        .then(function (r) {
-          document.getElementById('stat-negozi').textContent = r.count || 0;
+      if (isSuperAdmin) {
+        // Super Admin: mostra gestione negozi
+        document.getElementById('super-admin-section').style.display = 'block';
+        document.getElementById('admin-negozio-section').style.display = 'none';
+        
+        // Conta negozi attivi
+        supabase.from('negozi').select('id', { count: 'exact' }).eq('attivo', true)
+          .then(function (r) {
+            document.getElementById('stat-negozi').textContent = r.count || 0;
+          });
+
+        // Conversazioni di oggi
+        var oggi = new Date(); oggi.setHours(0, 0, 0, 0);
+        supabase.from('conversazioni').select('id', { count: 'exact' }).gte('created_at', oggi.toISOString())
+          .then(function (r) {
+            document.getElementById('stat-conv').textContent = r.count || 0;
+          });
+
+        // Escalation attive
+        supabase.from('sessioni').select('id', { count: 'exact' }).eq('stato', 'escalation')
+          .then(function (r) {
+            document.getElementById('stat-esc').textContent = r.count || 0;
+          });
+
+        // Tasso risoluzione AI
+        supabase.from('sessioni').select('stato').then(function (r) {
+          if (!r.data || r.data.length === 0) return;
+          var total = r.data.length;
+          var aiRisolte = r.data.filter(function (s) { return s.stato !== 'escalation'; }).length;
+          document.getElementById('stat-ai').textContent = Math.round(aiRisolte / total * 100) + '%';
         });
 
-      // Conversazioni di oggi
-      var oggi = new Date(); oggi.setHours(0, 0, 0, 0);
-      supabase.from('conversazioni').select('id', { count: 'exact' }).gte('created_at', oggi.toISOString())
-        .then(function (r) {
-          document.getElementById('stat-conv').textContent = r.count || 0;
-        });
+        // Lista negozi
+        supabase.from('negozi').select('*')
+          .then(function (r) {
+            var tbody = document.getElementById('negozi-tbody');
+            tbody.innerHTML = '';
+            if (!r.data) return;
+            r.data.forEach(function (n) {
+              var tr = document.createElement('tr');
+              tr.innerHTML = [
+                '<td><strong>' + escHtml(n.nome) + '</strong></td>',
+                '<td>' + escHtml(n.shopify_url || '—') + '</td>',
+                '<td>' + escHtml(n.email_titolare || '—') + '</td>',
+                '<td><span class="status-dot ' + (n.attivo ? 'attivo' : 'inattivo') + '"></span>' + (n.attivo ? 'Attivo' : 'Inattivo') + '</td>',
+                '<td>—</td>',
+                '<td>—</td>'
+              ].join('');
+              tbody.appendChild(tr);
+            });
+          });
+      } else if (isAdmin && currentNegozioId) {
+        // Admin Negozio: mostra gestione operatori
+        document.getElementById('super-admin-section').style.display = 'none';
+        document.getElementById('admin-negozio-section').style.display = 'block';
+        
+        loadOperatori();
+      }
+    }
 
-      // Escalation attive
-      supabase.from('sessioni').select('id', { count: 'exact' }).eq('stato', 'escalation')
-        .then(function (r) {
-          document.getElementById('stat-esc').textContent = r.count || 0;
-        });
+    // ================================================================
+    // ADMIN NEGOZIO: GESTIONE OPERATORI
+    // ================================================================
+    function loadOperatori() {
+      if (!currentNegozioId) return;
 
-      // Tasso risoluzione AI
-      supabase.from('sessioni').select('stato').then(function (r) {
-        if (!r.data || r.data.length === 0) return;
-        var total = r.data.length;
-        var aiRisolte = r.data.filter(function (s) { return s.stato !== 'escalation'; }).length;
-        document.getElementById('stat-ai').textContent = Math.round(aiRisolte / total * 100) + '%';
-      });
-
-      // Lista negozi
-      supabase.from('negozi').select('*')
+      // Carica operatori del negozio
+      supabase
+        .from('operatori')
+        .select('id, nome, email, ruolo, password_hash, user_id, created_at')
+        .eq('negozio_id', currentNegozioId)
+        .order('created_at', { ascending: false })
         .then(function (r) {
-          var tbody = document.getElementById('negozi-tbody');
+          if (r.error) {
+            console.error('Errore caricamento operatori:', r.error);
+            showToast('Errore caricamento operatori: ' + r.error.message, true);
+            return;
+          }
+
+          var operatori = r.data || [];
+          var tbody = document.getElementById('operatori-tbody');
           tbody.innerHTML = '';
-          if (!r.data) return;
-          r.data.forEach(function (n) {
+
+          // Statistiche
+          var totali = operatori.length;
+          var attivi = operatori.filter(function (o) { return o.password_hash !== null; }).length;
+          var pending = operatori.filter(function (o) { return o.password_hash === null; }).length;
+
+          document.getElementById('stat-operatori-totali').textContent = totali;
+          document.getElementById('stat-operatori-attivi').textContent = attivi;
+          document.getElementById('stat-operatori-pending').textContent = pending;
+
+          // Conversazioni oggi del negozio
+          var oggi = new Date(); oggi.setHours(0, 0, 0, 0);
+          supabase
+            .from('conversazioni')
+            .select('id', { count: 'exact' })
+            .eq('negozio_id', currentNegozioId)
+            .gte('created_at', oggi.toISOString())
+            .then(function (convRes) {
+              document.getElementById('stat-conv-negozio').textContent = convRes.count || 0;
+            });
+
+          if (operatori.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 24px; color: var(--text-muted);">Nessun operatore ancora. Aggiungi il primo operatore!</td></tr>';
+            return;
+          }
+
+          operatori.forEach(function (op) {
             var tr = document.createElement('tr');
+            var isRegistrato = op.password_hash !== null;
+            var statoReg = isRegistrato 
+              ? '<span style="color: var(--success); font-weight: 600;">✓ Registrato</span>'
+              : '<span style="color: var(--warning); font-weight: 600;">⏳ In attesa</span>';
+            var ruoloBadge = op.ruolo === 'admin' 
+              ? '<span style="background: var(--primary); color: white; padding: 2px 8px; border-radius: 4px; font-size: 11px;">Admin</span>'
+              : '<span style="background: var(--bg); color: var(--text-muted); padding: 2px 8px; border-radius: 4px; font-size: 11px;">Operatore</span>';
+            var dataCreazione = op.created_at 
+              ? new Date(op.created_at).toLocaleDateString('it-IT', { day: '2-digit', month: '2-digit', year: 'numeric' })
+              : '—';
+
             tr.innerHTML = [
-              '<td><strong>' + escHtml(n.nome) + '</strong></td>',
-              '<td>' + escHtml(n.shopify_url || '—') + '</td>',
-              '<td>' + escHtml(n.email_titolare || '—') + '</td>',
-              '<td><span class="status-dot ' + (n.attivo ? 'attivo' : 'inattivo') + '"></span>' + (n.attivo ? 'Attivo' : 'Inattivo') + '</td>',
-              '<td>—</td>',
-              '<td>—</td>'
+              '<td><strong>' + escHtml(op.nome || '—') + '</strong></td>',
+              '<td>' + escHtml(op.email || '—') + '</td>',
+              '<td>' + ruoloBadge + '</td>',
+              '<td>' + statoReg + '</td>',
+              '<td>' + dataCreazione + '</td>',
+              '<td><button class="btn-action" onclick="editOperatore(\'' + op.id + '\')" style="padding: 4px 12px; font-size: 12px;">Modifica</button></td>'
             ].join('');
             tbody.appendChild(tr);
           });
+        });
+    }
+
+    // Variabile per tracciare operatore in modifica
+    var editingOperatoreId = null;
+
+    // Funzione globale per modificare operatore (chiamata da onclick)
+    window.editOperatore = function(operatoreId) {
+      editingOperatoreId = operatoreId;
+      
+      supabase
+        .from('operatori')
+        .select('*')
+        .eq('id', operatoreId)
+        .single()
+        .then(function (r) {
+          if (r.error || !r.data) {
+            showToast('Errore caricamento operatore', true);
+            return;
+          }
+
+          var op = r.data;
+          document.getElementById('modal-operatore-title').textContent = '✏️ Modifica Operatore';
+          document.getElementById('o-nome').value = op.nome || '';
+          document.getElementById('o-email').value = op.email || '';
+          document.getElementById('o-ruolo').value = op.ruolo || 'operatore';
+          
+          // Mostra info stato
+          var statusInfo = document.getElementById('o-status-info');
+          var statusText = document.getElementById('o-status-text');
+          var statusDetail = document.getElementById('o-status-detail');
+          var deleteBtn = document.getElementById('btn-delete-operatore');
+          
+          if (op.password_hash) {
+            statusText.textContent = 'Registrato';
+            statusDetail.textContent = 'L\'operatore ha completato la registrazione e può accedere alla dashboard.';
+            deleteBtn.style.display = 'none'; // Non permettere eliminazione se registrato
+          } else {
+            statusText.textContent = 'In attesa di registrazione';
+            statusDetail.textContent = 'L\'operatore deve ancora completare la registrazione con email e password.';
+            deleteBtn.style.display = 'inline-block';
+          }
+          
+          statusInfo.style.display = 'block';
+          document.getElementById('modal-operatore').classList.add('visible');
         });
     }
 
@@ -2169,6 +2413,136 @@
           loadAdminStats();
         }
       });
+    });
+
+    // ================================================================
+    // MODAL AGGIUNGI/MODIFICA OPERATORE
+    // ================================================================
+    document.getElementById('btn-add-operatore').addEventListener('click', function () {
+      editingOperatoreId = null;
+      document.getElementById('modal-operatore-title').textContent = '➕ Nuovo Operatore';
+      document.getElementById('form-operatore').reset();
+      document.getElementById('o-status-info').style.display = 'none';
+      document.getElementById('btn-delete-operatore').style.display = 'none';
+      document.getElementById('modal-operatore').classList.add('visible');
+    });
+
+    document.getElementById('btn-cancel-modal-operatore').addEventListener('click', function () {
+      document.getElementById('modal-operatore').classList.remove('visible');
+      editingOperatoreId = null;
+    });
+
+    document.getElementById('modal-operatore').addEventListener('click', function (e) {
+      if (e.target === this) {
+        this.classList.remove('visible');
+        editingOperatoreId = null;
+      }
+    });
+
+    document.getElementById('form-operatore').addEventListener('submit', function (e) {
+      e.preventDefault();
+      if (!currentNegozioId) {
+        showToast('Errore: negozio non trovato', true);
+        return;
+      }
+
+      var nome = document.getElementById('o-nome').value.trim();
+      var email = document.getElementById('o-email').value.trim().toLowerCase();
+      var ruolo = document.getElementById('o-ruolo').value;
+
+      if (!nome || !email) {
+        showToast('Nome e email sono obbligatori', true);
+        return;
+      }
+
+      var data = {
+        negozio_id: currentNegozioId,
+        nome: nome,
+        email: email,
+        ruolo: ruolo,
+        password_hash: null, // L'operatore completerà la registrazione
+        user_id: null
+      };
+
+      var promise;
+      if (editingOperatoreId) {
+        // Modifica operatore esistente
+        // Non permettere modifica se è già registrato (solo nome e ruolo)
+        supabase
+          .from('operatori')
+          .select('password_hash')
+          .eq('id', editingOperatoreId)
+          .single()
+          .then(function (checkRes) {
+            if (checkRes.data && checkRes.data.password_hash) {
+              // Se registrato, permettere solo modifica nome e ruolo
+              promise = supabase
+                .from('operatori')
+                .update({ nome: nome, ruolo: ruolo })
+                .eq('id', editingOperatoreId);
+            } else {
+              // Se non registrato, permettere modifica completa
+              promise = supabase
+                .from('operatori')
+                .update({ nome: nome, email: email, ruolo: ruolo })
+                .eq('id', editingOperatoreId);
+            }
+            
+            promise.then(function (res) {
+              if (res.error) {
+                showToast('Errore: ' + res.error.message, true);
+              } else {
+                showToast('Operatore aggiornato con successo!');
+                document.getElementById('modal-operatore').classList.remove('visible');
+                document.getElementById('form-operatore').reset();
+                editingOperatoreId = null;
+                loadOperatori();
+              }
+            });
+          });
+      } else {
+        // Nuovo operatore
+        promise = supabase.from('operatori').insert(data);
+        promise.then(function (res) {
+          if (res.error) {
+            if (res.error.message.includes('unique') || res.error.message.includes('duplicate')) {
+              showToast('Errore: questa email è già registrata', true);
+            } else {
+              showToast('Errore: ' + res.error.message, true);
+            }
+          } else {
+            showToast('Operatore aggiunto con successo! Invia il link della dashboard per completare la registrazione.');
+            document.getElementById('modal-operatore').classList.remove('visible');
+            document.getElementById('form-operatore').reset();
+            loadOperatori();
+          }
+        });
+      }
+    });
+
+    // Elimina operatore
+    document.getElementById('btn-delete-operatore').addEventListener('click', function () {
+      if (!editingOperatoreId) return;
+      
+      if (!confirm('Sei sicuro di voler eliminare questo operatore? L\'operazione non può essere annullata.')) {
+        return;
+      }
+
+      supabase
+        .from('operatori')
+        .delete()
+        .eq('id', editingOperatoreId)
+        .then(function (res) {
+          if (res.error) {
+            showToast('Errore: ' + res.error.message, true);
+          } else {
+            showToast('Operatore eliminato con successo!');
+            document.getElementById('modal-operatore').classList.remove('visible');
+            document.getElementById('form-operatore').reset();
+            editingOperatoreId = null;
+            loadOperatori();
+          }
+        });
     });
 
     // ================================================================
