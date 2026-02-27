@@ -2249,133 +2249,145 @@
 
 
     // ================================================================
-    // MODAL AGGIUNGI/MODIFICA OPERATORE
+    // MODAL AGGIUNGI/MODIFICA OPERATORE - Event Delegation
     // ================================================================
-    document.getElementById('btn-add-operatore').addEventListener('click', function () {
-      editingOperatoreId = null;
-      document.getElementById('modal-operatore-title').textContent = '➕ Nuovo Operatore';
-      document.getElementById('form-operatore').reset();
-      document.getElementById('o-status-info').style.display = 'none';
-      document.getElementById('btn-delete-operatore').style.display = 'none';
-      document.getElementById('modal-operatore').classList.add('visible');
-    });
-
-    document.getElementById('btn-cancel-modal-operatore').addEventListener('click', function () {
-      document.getElementById('modal-operatore').classList.remove('visible');
-      editingOperatoreId = null;
-    });
-
-    document.getElementById('modal-operatore').addEventListener('click', function (e) {
-      if (e.target === this) {
-        this.classList.remove('visible');
+    // Event delegation per gestire i click sui pulsanti operatori
+    document.addEventListener('click', function(e) {
+      // Aggiungi operatore
+      if (e.target && e.target.id === 'btn-add-operatore') {
         editingOperatoreId = null;
-      }
-    });
-
-    document.getElementById('form-operatore').addEventListener('submit', function (e) {
-      e.preventDefault();
-      if (!currentNegozioId) {
-        showToast('Errore: negozio non trovato', true);
+        document.getElementById('modal-operatore-title').textContent = '➕ Nuovo Operatore';
+        document.getElementById('form-operatore').reset();
+        document.getElementById('o-status-info').style.display = 'none';
+        document.getElementById('btn-delete-operatore').style.display = 'none';
+        document.getElementById('modal-operatore').classList.add('visible');
         return;
       }
 
-      var nome = document.getElementById('o-nome').value.trim();
-      var email = document.getElementById('o-email').value.trim().toLowerCase();
-      var ruolo = document.getElementById('o-ruolo').value;
-
-      if (!nome || !email) {
-        showToast('Nome e email sono obbligatori', true);
+      // Cancel modal
+      if (e.target && e.target.id === 'btn-cancel-modal-operatore') {
+        document.getElementById('modal-operatore').classList.remove('visible');
+        editingOperatoreId = null;
         return;
       }
 
-      var data = {
-        negozio_id: currentNegozioId,
-        nome: nome,
-        email: email,
-        ruolo: ruolo,
-        password_hash: null, // L'operatore completerà la registrazione
-        user_id: null
-      };
+      // Elimina operatore
+      if (e.target && e.target.id === 'btn-delete-operatore') {
+        if (!editingOperatoreId) return;
+        
+        if (!confirm('Sei sicuro di voler eliminare questo operatore? L\'operazione non può essere annullata.')) {
+          return;
+        }
 
-      var promise;
-      if (editingOperatoreId) {
-        // Modifica operatore esistente
-        // Non permettere modifica se è già registrato (solo nome e ruolo)
         supabase
           .from('operatori')
-          .select('password_hash')
+          .delete()
           .eq('id', editingOperatoreId)
-          .single()
-          .then(function (checkRes) {
-            if (checkRes.data && checkRes.data.password_hash) {
-              // Se registrato, permettere solo modifica nome e ruolo
-              promise = supabase
-                .from('operatori')
-                .update({ nome: nome, ruolo: ruolo })
-                .eq('id', editingOperatoreId);
-            } else {
-              // Se non registrato, permettere modifica completa
-              promise = supabase
-                .from('operatori')
-                .update({ nome: nome, email: email, ruolo: ruolo })
-                .eq('id', editingOperatoreId);
-            }
-            
-            promise.then(function (res) {
-              if (res.error) {
-                showToast('Errore: ' + res.error.message, true);
-              } else {
-                showToast('Operatore aggiornato con successo!');
-                document.getElementById('modal-operatore').classList.remove('visible');
-                document.getElementById('form-operatore').reset();
-                editingOperatoreId = null;
-                loadOperatori();
-              }
-            });
-          });
-      } else {
-        // Nuovo operatore
-        promise = supabase.from('operatori').insert(data);
-        promise.then(function (res) {
-          if (res.error) {
-            if (res.error.message.includes('unique') || res.error.message.includes('duplicate')) {
-              showToast('Errore: questa email è già registrata', true);
-            } else {
+          .then(function (res) {
+            if (res.error) {
               showToast('Errore: ' + res.error.message, true);
+            } else {
+              showToast('Operatore eliminato con successo!');
+              document.getElementById('modal-operatore').classList.remove('visible');
+              document.getElementById('form-operatore').reset();
+              editingOperatoreId = null;
+              loadOperatori();
             }
-          } else {
-            showToast('Operatore aggiunto con successo! Invia il link della dashboard per completare la registrazione.');
-            document.getElementById('modal-operatore').classList.remove('visible');
-            document.getElementById('form-operatore').reset();
-            loadOperatori();
-          }
-        });
-      }
-    });
-
-    // Elimina operatore
-    document.getElementById('btn-delete-operatore').addEventListener('click', function () {
-      if (!editingOperatoreId) return;
-      
-      if (!confirm('Sei sicuro di voler eliminare questo operatore? L\'operazione non può essere annullata.')) {
+          });
         return;
       }
 
-      supabase
-        .from('operatori')
-        .delete()
-        .eq('id', editingOperatoreId)
-        .then(function (res) {
-          if (res.error) {
-            showToast('Errore: ' + res.error.message, true);
-          } else {
-            showToast('Operatore eliminato con successo!');
-            document.getElementById('modal-operatore').classList.remove('visible');
-            document.getElementById('form-operatore').reset();
-            editingOperatoreId = null;
-            loadOperatori();
-          }
-        });
+      // Click fuori dal modal per chiuderlo
+      if (e.target && e.target.id === 'modal-operatore') {
+        e.target.classList.remove('visible');
+        editingOperatoreId = null;
+        return;
+      }
+    });
+
+    // Form submit operatore
+    document.addEventListener('submit', function(e) {
+      if (e.target && e.target.id === 'form-operatore') {
+        e.preventDefault();
+        
+        if (!currentNegozioId) {
+          showToast('Errore: negozio non trovato', true);
+          return;
+        }
+
+        var nome = document.getElementById('o-nome').value.trim();
+        var email = document.getElementById('o-email').value.trim().toLowerCase();
+        var ruolo = document.getElementById('o-ruolo').value;
+
+        if (!nome || !email) {
+          showToast('Nome e email sono obbligatori', true);
+          return;
+        }
+
+        var data = {
+          negozio_id: currentNegozioId,
+          nome: nome,
+          email: email,
+          ruolo: ruolo,
+          password_hash: null, // L'operatore completerà la registrazione
+          user_id: null
+        };
+
+        var promise;
+        if (editingOperatoreId) {
+          // Modifica operatore esistente
+          // Non permettere modifica se è già registrato (solo nome e ruolo)
+          supabase
+            .from('operatori')
+            .select('password_hash')
+            .eq('id', editingOperatoreId)
+            .single()
+            .then(function (checkRes) {
+              if (checkRes.data && checkRes.data.password_hash) {
+                // Se registrato, permettere solo modifica nome e ruolo
+                promise = supabase
+                  .from('operatori')
+                  .update({ nome: nome, ruolo: ruolo })
+                  .eq('id', editingOperatoreId);
+              } else {
+                // Se non registrato, permettere modifica completa
+                promise = supabase
+                  .from('operatori')
+                  .update({ nome: nome, email: email, ruolo: ruolo })
+                  .eq('id', editingOperatoreId);
+              }
+              
+              promise.then(function (res) {
+                if (res.error) {
+                  showToast('Errore: ' + res.error.message, true);
+                } else {
+                  showToast('Operatore aggiornato con successo!');
+                  document.getElementById('modal-operatore').classList.remove('visible');
+                  document.getElementById('form-operatore').reset();
+                  editingOperatoreId = null;
+                  loadOperatori();
+                }
+              });
+            });
+        } else {
+          // Nuovo operatore
+          promise = supabase.from('operatori').insert(data);
+          promise.then(function (res) {
+            if (res.error) {
+              if (res.error.message.includes('unique') || res.error.message.includes('duplicate')) {
+                showToast('Errore: questa email è già registrata', true);
+              } else {
+                showToast('Errore: ' + res.error.message, true);
+              }
+            } else {
+              showToast('Operatore aggiunto con successo! Invia il link della dashboard per completare la registrazione.');
+              document.getElementById('modal-operatore').classList.remove('visible');
+              document.getElementById('form-operatore').reset();
+              loadOperatori();
+            }
+          });
+        }
+      }
     });
 
     // ================================================================
