@@ -40,7 +40,7 @@ serve(async (req) => {
     // Verifica che l'email esista nella tabella operatori
     const { data: operatoreCheck, error: checkError } = await supabaseAdmin
       .from('operatori')
-      .select('id, email, password_hash, user_id, negozio_id')
+      .select('id, email, password_hash, user_id, negozio_id, attivo')
       .eq('email', email.toLowerCase())
       .single()
 
@@ -50,6 +50,17 @@ serve(async (req) => {
         JSON.stringify({ error: 'Email non autorizzata. Contatta l\'amministratore per essere aggiunto al sistema.' }),
         { 
           status: 401,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        }
+      )
+    }
+
+    // Verifica che l'operatore sia attivo
+    if (operatoreCheck.attivo === false) {
+      return new Response(
+        JSON.stringify({ error: 'Account disattivato. Contatta l\'amministratore per riattivare il tuo account.' }),
+        { 
+          status: 403,
           headers: { ...corsHeaders, 'Content-Type': 'application/json' }
         }
       )
