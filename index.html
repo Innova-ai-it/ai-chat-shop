@@ -1970,7 +1970,7 @@
     function loadConversations() {
       var query = supabase
         .from('sessioni')
-        .select('*')
+        .select('*, operatore_id, priorita, escalated_at') // Assicurati di includere i nuovi campi
         .order('updated_at', { ascending: false });
 
       if (!isAdmin && currentNegozioId) {
@@ -2453,6 +2453,25 @@
           btn.disabled = false;
           btn.textContent = 'Invia risposta';
           if (data.success) {
+            // Aggiorna la sessione con l'operatore_id se non è già impostato
+            // Questo traccia quale operatore ha gestito questa escalation
+            supabase
+              .from('sessioni')
+              .update({ operatore_id: currentUser.id })
+              .eq('session_id', activeSession)
+              .is('operatore_id', null) // Solo se non è già impostato
+              .then(function(updateRes) {
+                if (updateRes.error) {
+                  console.error('Errore aggiornamento operatore_id:', updateRes.error);
+                } else if (updateRes.data && updateRes.data.length > 0) {
+                  // Aggiorna anche allSessions per mantenere sincronizzato
+                  var sessionIndex = allSessions.findIndex(function(s) { return s.session_id === activeSession; });
+                  if (sessionIndex >= 0) {
+                    allSessions[sessionIndex].operatore_id = currentUser.id;
+                  }
+                }
+              });
+
             input.value = '';
             input.style.height = 'auto';
             if (subjectInput) subjectInput.value = '';
@@ -2977,10 +2996,10 @@
       var dateRange = document.getElementById('insights-date-range').value;
       var startDate = getDateRangeStart(dateRange);
 
-      // Carica tutte le sessioni per il periodo selezionato
+      // Carica tutte le sessioni per il periodo selezionato (include tutti i campi necessari)
       var query = supabase
         .from('sessioni')
-        .select('*')
+        .select('*, operatore_id, priorita, escalated_at')
         .order('created_at', { ascending: false });
 
       if (!isAdmin && currentNegozioId) {
@@ -3059,55 +3078,82 @@
       // Per ogni escalation chiusa, calcola il tempo tra escalation e prima risposta operatore
       var responseTimes = [];
       var resolutionTimes = [];
+      var processedCount = 0;
+      var totalToProcess = sessions.filter(function(s) { return s.stato === 'chiusa' && s.escalated_at; }).length;
+
+      if (totalToProcess === 0) {
+        document.getElementById('kpi-avg-response-time').textContent = '—';
+        document.getElementById('kpi-avg-resolution-time').textContent = '—';
+        return;
+      }
 
       sessions.forEach(function(session) {
         if (session.stato === 'chiusa' && session.escalated_at) {
-          // Carica i messaggi per calcolare il tempo di risposta
+          // Usa escalated_at per calcolare i tempi
+          var escalationTime = new Date(session.escalated_at);
+          
+          // Carica i messaggi per trovare la prima risposta operatore
           supabase
             .from('conversazioni')
             .select('created_at, ruolo')
             .eq('session_id', session.session_id)
             .order('created_at', { ascending: true })
             .then(function(res) {
+              processedCount++;
+              
               if (res.data && res.data.length > 0) {
-                var escalationTime = new Date(session.escalated_at || session.created_at);
                 var firstOperatorMsg = res.data.find(function(m) { return m.ruolo === 'operatore'; });
                 
                 if (firstOperatorMsg) {
                   var responseTime = new Date(firstOperatorMsg.created_at) - escalationTime;
-                  responseTimes.push(responseTime);
+                  if (responseTime > 0) {
+                    responseTimes.push(responseTime);
+                  }
                 }
 
                 // Tempo di risoluzione (da escalation a chiusura)
                 if (session.updated_at) {
                   var resolutionTime = new Date(session.updated_at) - escalationTime;
-                  resolutionTimes.push(resolutionTime);
+                  if (resolutionTime > 0) {
+                    resolutionTimes.push(resolutionTime);
+                  }
                 }
               }
 
-              // Aggiorna UI quando abbiamo abbastanza dati
-              if (responseTimes.length > 0) {
-                var avgResponse = responseTimes.reduce(function(a, b) { return a + b; }, 0) / responseTimes.length;
-                var minutes = Math.round(avgResponse / 60000);
-                document.getElementById('kpi-avg-response-time').textContent = minutes + ' min';
-              }
+              // Aggiorna UI quando abbiamo processato tutti i dati
+              if (processedCount === totalToProcess) {
+                if (responseTimes.length > 0) {
+                  var avgResponse = responseTimes.reduce(function(a, b) { return a + b; }, 0) / responseTimes.length;
+                  var minutes = Math.round(avgResponse / 60000);
+                  document.getElementById('kpi-avg-response-time').textContent = minutes + ' min';
+                } else {
+                  document.getElementById('kpi-avg-response-time').textContent = '—';
+                }
 
-              if (resolutionTimes.length > 0) {
-                var avgResolution = resolutionTimes.reduce(function(a, b) { return a + b; }, 0) / resolutionTimes.length;
-                var hours = Math.round(avgResolution / 3600000 * 10) / 10;
-                document.getElementById('kpi-avg-resolution-time').textContent = hours + 'h';
+                if (resolutionTimes.length > 0) {
+                  var avgResolution = resolutionTimes.reduce(function(a, b) { return a + b; }, 0) / resolutionTimes.length;
+                  var hours = Math.round(avgResolution / 3600000 * 10) / 10;
+                  document.getElementById('kpi-avg-resolution-time').textContent = hours + 'h';
+                } else {
+                  document.getElementById('kpi-avg-resolution-time').textContent = '—';
+                }
+              }
+            })
+            .catch(function(err) {
+              processedCount++;
+              console.error('Errore calcolo tempi per sessione:', session.session_id, err);
+              if (processedCount === totalToProcess) {
+                if (responseTimes.length > 0) {
+                  var avgResponse = responseTimes.reduce(function(a, b) { return a + b; }, 0) / responseTimes.length;
+                  var minutes = Math.round(avgResponse / 60000);
+                  document.getElementById('kpi-avg-response-time').textContent = minutes + ' min';
+                } else {
+                  document.getElementById('kpi-avg-response-time').textContent = '—';
+                }
               }
             });
         }
       });
-
-      // Se non ci sono dati, mostra default
-      if (responseTimes.length === 0) {
-        document.getElementById('kpi-avg-response-time').textContent = '—';
-      }
-      if (resolutionTimes.length === 0) {
-        document.getElementById('kpi-avg-resolution-time').textContent = '—';
-      }
     }
 
     function calculateResolutionRate(totalEscalations, totalClosed) {
@@ -3146,7 +3192,9 @@
 
       sessions.forEach(function(s) {
         if (s.stato === 'escalation') {
-          var sessionDate = new Date(s.created_at);
+          // Usa escalated_at se disponibile, altrimenti created_at
+          var escalationDate = s.escalated_at || s.created_at;
+          var sessionDate = new Date(escalationDate);
           sessionDate.setHours(0, 0, 0, 0);
           var day = last7Days.find(function(d) {
             return d.date.getTime() === sessionDate.getTime();
@@ -3196,36 +3244,20 @@
 
       var chatCount = 0;
       var emailCount = 0;
+      var processedCount = 0;
+      var totalSessions = sessions.length;
 
-      sessions.forEach(function(s) {
-        // Determina canale dal primo messaggio o default
-        supabase
-          .from('conversazioni')
-          .select('canale')
-          .eq('session_id', s.session_id)
-          .limit(1)
-          .single()
-          .then(function(res) {
-            if (res.data && res.data.canale === 'email') {
-              emailCount++;
-            } else {
-              chatCount++;
-            }
-          });
-      });
-
-      // Usa timeout per aspettare che i dati siano caricati
-      setTimeout(function() {
+      if (totalSessions === 0) {
+        // Nessuna sessione, mostra grafico vuoto
         if (insightsCharts.channelDist) {
           insightsCharts.channelDist.destroy();
         }
-
         insightsCharts.channelDist = new Chart(ctx, {
           type: 'doughnut',
           data: {
             labels: ['Chat', 'Email'],
             datasets: [{
-              data: [chatCount, emailCount],
+              data: [0, 0],
               backgroundColor: ['#2563eb', '#f59e0b']
             }]
           },
@@ -3237,7 +3269,70 @@
             }
           }
         });
-      }, 1000);
+        return;
+      }
+
+      // Raccogli tutti i session_id
+      var sessionIds = sessions.map(function(s) { return s.session_id; });
+
+      // Carica tutti i canali in una query
+      supabase
+        .from('conversazioni')
+        .select('session_id, canale')
+        .in('session_id', sessionIds)
+        .order('created_at', { ascending: true })
+        .then(function(res) {
+          if (res.error || !res.data) {
+            console.error('Errore caricamento canali:', res.error);
+            return;
+          }
+
+          // Crea mappa session_id -> canale (primo messaggio per sessione)
+          var channelMap = {};
+          var seenSessions = {};
+          res.data.forEach(function(msg) {
+            if (!seenSessions[msg.session_id]) {
+              channelMap[msg.session_id] = msg.canale || 'chat';
+              seenSessions[msg.session_id] = true;
+            }
+          });
+
+          // Conta canali
+          sessions.forEach(function(s) {
+            var canale = channelMap[s.session_id] || 'chat';
+            if (canale === 'email') {
+              emailCount++;
+            } else {
+              chatCount++;
+            }
+          });
+
+          // Crea grafico
+          if (insightsCharts.channelDist) {
+            insightsCharts.channelDist.destroy();
+          }
+
+          insightsCharts.channelDist = new Chart(ctx, {
+            type: 'doughnut',
+            data: {
+              labels: ['Chat', 'Email'],
+              datasets: [{
+                data: [chatCount, emailCount],
+                backgroundColor: ['#2563eb', '#f59e0b']
+              }]
+            },
+            options: {
+              responsive: true,
+              maintainAspectRatio: false,
+              plugins: {
+                legend: { position: 'bottom' }
+              }
+            }
+          });
+        })
+        .catch(function(err) {
+          console.error('Errore creazione grafico canali:', err);
+        });
     }
 
     function createPriorityDistributionChart(sessions) {
@@ -3313,7 +3408,7 @@
     }
 
     function loadOperatorPerformance(sessions) {
-      // Carica operatori e calcola performance
+      // Carica operatori e calcola performance usando operatore_id
       if (!currentNegozioId) return;
 
       supabase
@@ -3321,50 +3416,193 @@
         .select('id, nome, email')
         .eq('negozio_id', currentNegozioId)
         .then(function(res) {
-          if (res.error || !res.data) return;
-
-          var operators = res.data;
-          var performance = [];
-
-          operators.forEach(function(op) {
-            var operatorSessions = sessions.filter(function(s) {
-              // Qui dovresti tracciare quale operatore ha gestito quale sessione
-              // Per ora usiamo un placeholder
-              return s.operatore_id === op.id;
-            });
-
-            performance.push({
-              nome: op.nome || op.email,
-              escalationGestite: operatorSessions.length,
-              tempoRisposta: '—',
-              tempoRisoluzione: '—',
-              tassoRisoluzione: '—'
-            });
-          });
-
-          // Ordina per escalation gestite
-          performance.sort(function(a, b) { return b.escalationGestite - a.escalationGestite; });
-
-          // Renderizza tabella
-          var tbody = document.getElementById('operator-performance-tbody');
-          if (performance.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; padding: 24px; color: var(--text-muted);">Nessun dato disponibile</td></tr>';
+          if (res.error || !res.data) {
+            console.error('Errore caricamento operatori:', res.error);
             return;
           }
 
-          tbody.innerHTML = '';
-          performance.forEach(function(perf) {
-            var tr = document.createElement('tr');
-            tr.innerHTML = [
-              '<td><strong>' + escHtml(perf.nome) + '</strong></td>',
-              '<td>' + perf.escalationGestite + '</td>',
-              '<td>' + perf.tempoRisposta + '</td>',
-              '<td>' + perf.tempoRisoluzione + '</td>',
-              '<td>' + perf.tassoRisoluzione + '</td>'
-            ].join('');
-            tbody.appendChild(tr);
+          var operators = res.data;
+          var performance = [];
+          var operatorsProcessed = 0;
+
+          if (operators.length === 0) {
+            var tbody = document.getElementById('operator-performance-tbody');
+            tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; padding: 24px; color: var(--text-muted);">Nessun operatore disponibile</td></tr>';
+            return;
+          }
+
+          operators.forEach(function(op) {
+            // Filtra sessioni gestite da questo operatore (solo quelle chiuse)
+            var operatorSessions = sessions.filter(function(s) {
+              return s.operatore_id === op.id && s.stato === 'chiusa';
+            });
+
+            var responseTimes = [];
+            var resolutionTimes = [];
+            var totalEscalations = operatorSessions.length;
+            var resolvedEscalations = 0;
+
+            if (operatorSessions.length === 0) {
+              performance.push({
+                nome: op.nome || op.email,
+                escalationGestite: 0,
+                tempoRisposta: '—',
+                tempoRisoluzione: '—',
+                tassoRisoluzione: '—'
+              });
+              operatorsProcessed++;
+              if (operatorsProcessed === operators.length) {
+                renderPerformanceTable(performance);
+              }
+              return;
+            }
+
+            // Per ogni sessione, calcola i tempi
+            var sessionsProcessed = 0;
+            operatorSessions.forEach(function(session) {
+              if (!session.escalated_at) {
+                sessionsProcessed++;
+                if (sessionsProcessed === operatorSessions.length) {
+                  calculateOperatorMetrics();
+                }
+                return;
+              }
+
+              var escalationTime = new Date(session.escalated_at);
+              
+              // Carica messaggi per trovare prima risposta operatore
+              supabase
+                .from('conversazioni')
+                .select('created_at, ruolo')
+                .eq('session_id', session.session_id)
+                .order('created_at', { ascending: true })
+                .then(function(msgRes) {
+                  sessionsProcessed++;
+                  
+                  if (msgRes.data && msgRes.data.length > 0) {
+                    var firstOperatorMsg = msgRes.data.find(function(m) { return m.ruolo === 'operatore'; });
+                    
+                    if (firstOperatorMsg) {
+                      var responseTime = new Date(firstOperatorMsg.created_at) - escalationTime;
+                      if (responseTime > 0) {
+                        responseTimes.push(responseTime);
+                      }
+                    }
+
+                    // Tempo di risoluzione
+                    if (session.updated_at) {
+                      var resolutionTime = new Date(session.updated_at) - escalationTime;
+                      if (resolutionTime > 0) {
+                        resolutionTimes.push(resolutionTime);
+                        resolvedEscalations++;
+                      }
+                    }
+                  }
+
+                  if (sessionsProcessed === operatorSessions.length) {
+                    calculateOperatorMetrics();
+                  }
+                })
+                .catch(function(err) {
+                  sessionsProcessed++;
+                  console.error('Errore calcolo metriche operatore:', err);
+                  if (sessionsProcessed === operatorSessions.length) {
+                    calculateOperatorMetrics();
+                  }
+                });
+            });
+
+            function calculateOperatorMetrics() {
+              var avgResponse = responseTimes.length > 0
+                ? Math.round(responseTimes.reduce(function(a, b) { return a + b; }, 0) / responseTimes.length / 60000)
+                : null;
+              
+              var avgResolution = resolutionTimes.length > 0
+                ? Math.round(resolutionTimes.reduce(function(a, b) { return a + b; }, 0) / resolutionTimes.length / 3600000 * 10) / 10
+                : null;
+
+              var resolutionRate = totalEscalations > 0
+                ? Math.round((resolvedEscalations / totalEscalations) * 100)
+                : 0;
+
+              performance.push({
+                nome: op.nome || op.email,
+                escalationGestite: totalEscalations,
+                tempoRisposta: avgResponse !== null ? avgResponse + ' min' : '—',
+                tempoRisoluzione: avgResolution !== null ? avgResolution + 'h' : '—',
+                tassoRisoluzione: resolutionRate + '%'
+              });
+
+              operatorsProcessed++;
+              if (operatorsProcessed === operators.length) {
+                renderPerformanceTable(performance);
+              }
+            }
           });
         });
+    }
+
+    function renderPerformanceTable(performance) {
+      // Ordina per escalation gestite
+      performance.sort(function(a, b) { return b.escalationGestite - a.escalationGestite; });
+
+      var tbody = document.getElementById('operator-performance-tbody');
+      if (performance.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; padding: 24px; color: var(--text-muted);">Nessun dato disponibile</td></tr>';
+        return;
+      }
+
+      tbody.innerHTML = '';
+      performance.forEach(function(perf) {
+        var tr = document.createElement('tr');
+        tr.innerHTML = [
+          '<td><strong>' + escHtml(perf.nome) + '</strong></td>',
+          '<td>' + perf.escalationGestite + '</td>',
+          '<td>' + perf.tempoRisposta + '</td>',
+          '<td>' + perf.tempoRisoluzione + '</td>',
+          '<td>' + perf.tassoRisoluzione + '</td>'
+        ].join('');
+        tbody.appendChild(tr);
+      });
+
+      // Aggiorna anche il grafico delle performance operatori
+      updateOperatorPerformanceChart(performance);
+    }
+
+    function updateOperatorPerformanceChart(performance) {
+      var ctx = document.getElementById('chart-operator-performance');
+      if (!ctx) return;
+
+      // Prendi i top 5 operatori
+      var topOperators = performance.slice(0, 5);
+      var labels = topOperators.map(function(p) { return p.nome.length > 15 ? p.nome.substring(0, 15) + '...' : p.nome; });
+      var data = topOperators.map(function(p) { return p.escalationGestite; });
+
+      if (insightsCharts.operatorPerf) {
+        insightsCharts.operatorPerf.destroy();
+      }
+
+      insightsCharts.operatorPerf = new Chart(ctx, {
+        type: 'bar',
+        data: {
+          labels: labels,
+          datasets: [{
+            label: 'Escalation Gestite',
+            data: data,
+            backgroundColor: '#2563eb'
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { display: false }
+          },
+          scales: {
+            y: { beginAtZero: true }
+          }
+        }
+      });
     }
 
     // ================================================================
