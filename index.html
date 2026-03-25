@@ -2225,20 +2225,11 @@
       }
 
       // Setup Realtime per i messaggi di QUESTA sessione
+      // Il Realtime gestisce già i nuovi messaggi in tempo reale:
+      // il polling ogni 3s era ridondante e causava duplicazioni.
       setupMessageRealtime(sessione.session_id);
 
-      // Polling fallback per i messaggi (ogni 3 secondi in modo silenzioso)
-      window.messagePolling = setInterval(function() {
-        if (activeSession === sessione.session_id) {
-          loadMessages(sessione.session_id, sessione.negozio_id, true);
-        } else {
-          // Se la sessione attiva è cambiata, ferma il polling
-          clearInterval(window.messagePolling);
-          window.messagePolling = null;
-        }
-      }, 3000);
-
-      // Carica messaggi
+      // Carica messaggi (prima apertura)
       loadMessages(sessione.session_id, sessione.negozio_id);
     }
 
@@ -2315,83 +2306,99 @@
 
     function renderMessages(msgs) {
       var el = document.getElementById('conv-messages');
-      
+
       if (!msgs || msgs.length === 0) {
         el.innerHTML = '<div style="text-align:center;padding:20px;color:var(--text-muted)">Nessun messaggio</div>';
         return;
       }
 
-      // Rimuovi duplicati in modo più robusto
-      var seenMessages = new Map();
+      // ── 1. Deduplicazione in ingresso ─────────────────────────────
+      // Usa l'id del record DB come chiave primaria; fallback su
+      // contenuto+ruolo+timestamp arrotondato al secondo.
+      var seenKeys = new Set();
       var uniqueMsgs = [];
-      
-      // Ordina per created_at per assicurarsi che i messaggi più recenti abbiano priorità
-      var sortedMsgs = msgs.slice().sort(function(a, b) {
-        var timeA = a.created_at ? new Date(a.created_at).getTime() : 0;
-        var timeB = b.created_at ? new Date(b.created_at).getTime() : 0;
-        return timeB - timeA; // Più recenti prima
-      });
-      
-      sortedMsgs.forEach(function (msg) {
-        // Crea una chiave unica più robusta
-        var msgText = (msg.messaggio || '').trim();
-        var msgTime = msg.created_at ? new Date(msg.created_at).getTime() : 0;
-        var msgRole = msg.ruolo || 'unknown';
-        
-        // Usa id se disponibile (più affidabile)
-        var key = msg.id ? 'id_' + msg.id : null;
-        
-        // Se non c'è id, crea una chiave basata su contenuto + tempo + ruolo
-        // Arrotonda il tempo al secondo per gestire piccole differenze
-        if (!key) {
-          var timeKey = Math.floor(msgTime / 1000); // Arrotonda al secondo
-          key = 'msg_' + timeKey + '_' + msgRole + '_' + msgText.substring(0, 100);
-        }
-        
-        // Controlla se questo messaggio è già stato visto
-        // Se esiste già un messaggio con la stessa chiave, salta questo
-        if (!seenMessages.has(key)) {
-          seenMessages.set(key, true);
+
+      msgs.forEach(function (msg) {
+        var key = msg.id
+          ? 'id_' + msg.id
+          : 'msg_' + Math.floor((msg.created_at ? new Date(msg.created_at).getTime() : 0) / 1000)
+              + '_' + (msg.ruolo || '')
+              + '_' + (msg.messaggio || '').trim().substring(0, 100);
+        if (!seenKeys.has(key)) {
+          seenKeys.add(key);
           uniqueMsgs.push(msg);
         }
       });
-      
-      // Riordina per data crescente per la visualizzazione
-      uniqueMsgs.sort(function(a, b) {
-        var timeA = a.created_at ? new Date(a.created_at).getTime() : 0;
-        var timeB = b.created_at ? new Date(b.created_at).getTime() : 0;
-        return timeA - timeB; // Più vecchi prima
+
+      // Ordina per data crescente (messaggi più vecchi in cima)
+      uniqueMsgs.sort(function (a, b) {
+        var tA = a.created_at ? new Date(a.created_at).getTime() : 0;
+        var tB = b.created_at ? new Date(b.created_at).getTime() : 0;
+        return tA - tB;
       });
 
-      // Pulisci e renderizza
-      el.innerHTML = '';
-      
+      // ── 2. Render incrementale ────────────────────────────────────
+      // Raccoglie le chiavi dei messaggi già presenti nel DOM.
+      // Se il DOM è vuoto (prima apertura o dopo "Caricamento..."),
+      // li renderizza tutti; altrimenti aggiunge solo i nuovi.
+      var renderedKeys = new Set();
+      el.querySelectorAll('[data-msg-id]').forEach(function (row) {
+        renderedKeys.add('id_' + row.dataset.msgId);
+      });
+      el.querySelectorAll('[data-msg-key]').forEach(function (row) {
+        renderedKeys.add(row.dataset.msgKey);
+      });
+
+      // Se non ci sono messaggi reali nel DOM, pulisci e ri-renderizza tutto
+      // (gestisce il placeholder "Caricamento..." o "Nessun messaggio")
+      var hasRendered = renderedKeys.size > 0;
+      if (!hasRendered) {
+        el.innerHTML = '';
+      }
+
+      var addedAny = false;
+
       uniqueMsgs.forEach(function (msg) {
+        // Calcola la chiave esatta per questo messaggio
+        var key = msg.id
+          ? 'id_' + msg.id
+          : 'msg_' + Math.floor((msg.created_at ? new Date(msg.created_at).getTime() : 0) / 1000)
+              + '_' + (msg.ruolo || '')
+              + '_' + (msg.messaggio || '').trim().substring(0, 100);
+
+        // Salta se già presente nel DOM
+        if (renderedKeys.has(key)) return;
+
         var row = document.createElement('div');
         var ruolo = msg.ruolo === 'assistente' ? 'assistente' : msg.ruolo;
         row.className = 'msg-row ' + ruolo;
-        
-        // Aggiungi data-id o data-key per riferimento futuro
+
+        // Salva la chiave nel DOM per i render futuri
         if (msg.id) {
           row.dataset.msgId = msg.id;
         } else {
-          var msgText = (msg.messaggio || '').trim();
-          var msgTime = msg.created_at ? new Date(msg.created_at).getTime() : 0;
-          var timeKey = Math.floor(msgTime / 1000);
-          row.dataset.msgKey = 'msg_' + timeKey + '_' + msg.ruolo + '_' + msgText.substring(0, 50);
+          row.dataset.msgKey = key;
         }
-        
+
         var labelMap = { utente: '👤 Cliente', assistente: '🤖 AI', operatore: '✉ Operatore' };
-        var timeStr = msg.created_at ? new Date(msg.created_at).toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' }) : '';
+        var timeStr = msg.created_at
+          ? new Date(msg.created_at).toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })
+          : '';
+
         row.innerHTML = [
           '<div class="msg-label">' + (labelMap[ruolo] || ruolo) + '</div>',
           '<div class="msg-bubble">' + escHtml(msg.messaggio) + '</div>',
           '<div class="msg-time">' + timeStr + '</div>'
         ].join('');
+
         el.appendChild(row);
+        addedAny = true;
       });
 
-      el.scrollTop = el.scrollHeight;
+      // Scrolla in fondo solo se sono stati aggiunti nuovi messaggi
+      if (addedAny) {
+        el.scrollTop = el.scrollHeight;
+      }
     }
 
     // ================================================================
