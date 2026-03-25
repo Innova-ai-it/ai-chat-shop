@@ -2273,7 +2273,7 @@
 
       supabase
         .from('conversazioni')
-        .select('id, session_id, messaggio, ruolo, created_at, canale')
+        .select('id, session_id, messaggio, ruolo, created_at, canale, operatore_nome')
         .eq('session_id', sessionId)
         .order('created_at', { ascending: true })
         .then(function (res) {
@@ -2380,7 +2380,8 @@
           row.dataset.msgKey = key;
         }
 
-        var labelMap = { utente: '👤 Cliente', assistente: '🤖 AI', operatore: '✉ Operatore' };
+        var nomeOp = (ruolo === 'operatore' && msg.operatore_nome) ? msg.operatore_nome : 'Operatore';
+        var labelMap = { utente: '👤 Cliente', assistente: '🤖 AI', operatore: '✉ ' + nomeOp };
         var timeStr = msg.created_at
           ? new Date(msg.created_at).toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })
           : '';
@@ -2438,6 +2439,7 @@
         negozio_id: sessione.negozio_id,
         messaggio: msg,
         operatore_id: currentUser.id,
+        operatore_nome: currentUserNome || 'Operatore',
         chiudi: false
       };
       
