@@ -716,6 +716,9 @@
       font-size: 14px;
       line-height: 1.55;
       word-wrap: break-word;
+      overflow-wrap: anywhere;
+      word-break: break-word;
+      hyphens: auto;
       white-space: pre-wrap;
     }
 
@@ -743,6 +746,11 @@
       font-size: 10px;
       color: #cbd5e1;
       margin-top: 4px;
+    }
+
+    /* Email channel: keep chat layout/colors, just a slightly different background */
+    #conv-detail[data-channel="email"] #conv-messages {
+      background: #f8fafc;
     }
 
     #conv-reply {
@@ -1306,6 +1314,68 @@
         z-index: 60;
       }
 
+      /* Chat/email detail spacing on mobile */
+      #conv-info {
+        padding: 12px 12px;
+        gap: 12px;
+        flex-wrap: wrap;
+        align-items: flex-start;
+      }
+
+      #conv-info-text {
+        flex: 1 1 100%;
+        min-width: 0;
+      }
+
+      #conv-info-email {
+        font-size: 16px;
+        line-height: 1.2;
+      }
+
+      #conv-info-meta {
+        font-size: 12px;
+        line-height: 1.35;
+      }
+
+      #conv-info-actions {
+        width: 100%;
+        justify-content: space-between;
+        gap: 10px;
+        flex-wrap: wrap;
+      }
+
+      #conv-info-actions .priority-selector {
+        flex: 1 1 auto;
+        min-width: 160px;
+      }
+
+      #conv-info-actions .btn-chiudi {
+        flex: 0 0 auto;
+        padding: 8px 12px;
+      }
+
+      #conv-messages {
+        padding: 14px 12px;
+        gap: 10px;
+      }
+
+      .msg-row {
+        max-width: 92%;
+      }
+
+      .msg-bubble {
+        font-size: 13px;
+        line-height: 1.65;
+      }
+
+      .msg-label {
+        font-size: 10.5px;
+      }
+
+      .msg-time {
+        font-size: 9.5px;
+      }
+
       .insights-charts-grid {
         grid-template-columns: 1fr;
       }
@@ -1333,8 +1403,9 @@
     }
 
     /* Professional UI Enhancements */
+    /* Desktop: allow closing the visual chat view (back to placeholder) */
     #btn-back-to-list {
-      display: none;
+      display: flex;
       align-items: center;
       justify-content: center;
       padding: 8px;
@@ -1344,6 +1415,10 @@
       border-radius: 50%;
       cursor: pointer;
       color: var(--text);
+    }
+
+    #btn-back-to-list:hover {
+      background: rgba(2, 132, 199, 0.08);
     }
 
     .kpi-card {
@@ -2371,6 +2446,7 @@
       document.getElementById('conv-placeholder').style.display = 'none';
       var detail = document.getElementById('conv-detail');
       detail.classList.add('visible');
+      detail.setAttribute('data-channel', currentCanale);
       
       // Su mobile, nascondi la lista quando apri il dettaglio
       if (window.innerWidth <= 900) {
@@ -2387,7 +2463,7 @@
       }
       document.getElementById('conv-info-email').textContent = emailLabel;
       document.getElementById('conv-info-meta').textContent =
-        'Sessione: ' + sessione.session_id.slice(0, 20) + '… | Stato: ' + sessione.stato +
+        'Stato: ' + sessione.stato +
         ' | Canale: ' + (currentCanale === 'email' ? '✉ Email' : '💬 Chat') +
         ' | Aperta: ' + (sessione.created_at ? new Date(sessione.created_at).toLocaleString('it-IT') : '—');
 
@@ -3064,6 +3140,7 @@
       document.getElementById('btn-back-to-list').addEventListener('click', function() {
         activeSession = null;
         document.getElementById('conv-detail').classList.remove('visible');
+        document.getElementById('conv-detail').removeAttribute('data-channel');
         document.getElementById('conv-placeholder').style.display = 'flex';
         
         // Su mobile nascondi il dettaglio e mostra la lista
