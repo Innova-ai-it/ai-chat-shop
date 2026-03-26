@@ -3005,10 +3005,10 @@
       var dateRange = document.getElementById('insights-date-range').value;
       var startDate = getDateRangeStart(dateRange);
 
-      // Carica tutte le sessioni per il periodo selezionato (include tutti i campi necessari)
+      // Usiamo la vista analitica che ha già i tempi calcolati
       var query = supabase
-        .from('sessioni')
-        .select('*, operatore_id, priorita, escalated_at')
+        .from('vista_analitica_sessioni')
+        .select('*')
         .order('created_at', { ascending: false });
 
       if (!isAdmin && currentNegozioId) {
@@ -3026,7 +3026,7 @@
         }
 
         var sessions = res.data || [];
-        calculateInsights(sessions, dateRange);
+        calculateInsights(sessions);
       });
     }
 
@@ -3047,163 +3047,61 @@
       }
     }
 
-    function calculateInsights(sessions, dateRange) {
-      // Filtra per periodo se necessario
-      var startDate = getDateRangeStart(dateRange);
-      var filteredSessions = sessions;
-      if (startDate) {
-        filteredSessions = sessions.filter(function(s) {
-          return new Date(s.created_at) >= startDate;
-        });
-      }
+    function calculateInsights(sessions) {
+      // 1. Metriche Base
+      var totalSessions = sessions.length;
+      var activeEscalations = sessions.filter(function(s) { return s.stato === 'escalation'; }).length;
+      var historicalEscalations = sessions.filter(function(s) { return s.escalated_at !== null; }).length;
+      var closedEscalations = sessions.filter(function(s) { return s.stato === 'chiusa' && s.escalated_at !== null; }).length;
 
-      // Calcola metriche base
-      var escalationSessions = filteredSessions.filter(function(s) { return s.stato === 'escalation'; });
-      var closedSessions = filteredSessions.filter(function(s) { return s.stato === 'chiusa'; });
-      var totalEscalations = escalationSessions.length;
-      var totalClosed = closedSessions.length;
-      var totalSessions = filteredSessions.length;
-
-      // Aggiorna KPI
-      document.getElementById('kpi-escalation-count').textContent = totalEscalations;
+      // 2. Aggiorna KPI Semplici
       document.getElementById('kpi-conversation-volume').textContent = totalSessions;
+      document.getElementById('kpi-escalation-count').textContent = activeEscalations;
 
-      // Calcola tempo medio di risposta e risoluzione
-      calculateResponseTimes(filteredSessions);
-      calculateResolutionRate(totalEscalations, totalClosed);
-      calculateEscalationRate(totalEscalations, totalSessions);
+      // 3. Calcolo Medie (usando i campi della vista)
+      var validResponses = sessions.filter(function(s) { return s.risposta_minuti !== null && s.risposta_minuti >= 0; });
+      var avgResponse = validResponses.length > 0
+        ? Math.round(validResponses.reduce(function(a, b) { return a + b.risposta_minuti; }, 0) / validResponses.length)
+        : null;
+      document.getElementById('kpi-avg-response-time').textContent = avgResponse !== null ? avgResponse + ' min' : '—';
 
-      // Crea grafici
-      createEscalationTrendChart(filteredSessions);
-      createChannelDistributionChart(filteredSessions);
-      createPriorityDistributionChart(filteredSessions);
-      createOperatorPerformanceChart(filteredSessions);
+      var validResolutions = sessions.filter(function(s) { return s.risoluzione_ore !== null && s.risoluzione_ore >= 0; });
+      var avgResolution = validResolutions.length > 0
+        ? Math.round(validResolutions.reduce(function(a, b) { return a + b.risoluzione_ore; }, 0) / validResolutions.length * 10) / 10
+        : null;
+      document.getElementById('kpi-avg-resolution-time').textContent = avgResolution !== null ? avgResolution + 'h' : '—';
 
-      // Carica performance operatori
-      loadOperatorPerformance(filteredSessions);
-    }
+      // 4. Tassi (%) Corretti
+      var resRate = historicalEscalations > 0 ? Math.round((closedEscalations / historicalEscalations) * 100) : 0;
+      document.getElementById('kpi-resolution-rate').textContent = resRate + '%';
 
-    function calculateResponseTimes(sessions) {
-      // Per ogni escalation chiusa, calcola il tempo tra escalation e prima risposta operatore
-      var responseTimes = [];
-      var resolutionTimes = [];
-      var processedCount = 0;
-      var totalToProcess = sessions.filter(function(s) { return s.stato === 'chiusa' && s.escalated_at; }).length;
+      var escRate = totalSessions > 0 ? Math.round((historicalEscalations / totalSessions) * 100) : 0;
+      document.getElementById('kpi-escalation-rate').textContent = escRate + '%';
 
-      if (totalToProcess === 0) {
-        document.getElementById('kpi-avg-response-time').textContent = '—';
-        document.getElementById('kpi-avg-resolution-time').textContent = '—';
-        return;
-      }
-
-      sessions.forEach(function(session) {
-        if (session.stato === 'chiusa' && session.escalated_at) {
-          // Usa escalated_at per calcolare i tempi
-          var escalationTime = new Date(session.escalated_at);
-          
-          // Carica i messaggi per trovare la prima risposta operatore
-          supabase
-            .from('conversazioni')
-            .select('created_at, ruolo')
-            .eq('session_id', session.session_id)
-            .order('created_at', { ascending: true })
-            .then(function(res) {
-              processedCount++;
-              
-              if (res.data && res.data.length > 0) {
-                var firstOperatorMsg = res.data.find(function(m) { return m.ruolo === 'operatore'; });
-                
-                if (firstOperatorMsg) {
-                  var responseTime = new Date(firstOperatorMsg.created_at) - escalationTime;
-                  if (responseTime > 0) {
-                    responseTimes.push(responseTime);
-                  }
-                }
-
-                // Tempo di risoluzione (da escalation a chiusura)
-                if (session.updated_at) {
-                  var resolutionTime = new Date(session.updated_at) - escalationTime;
-                  if (resolutionTime > 0) {
-                    resolutionTimes.push(resolutionTime);
-                  }
-                }
-              }
-
-              // Aggiorna UI quando abbiamo processato tutti i dati
-              if (processedCount === totalToProcess) {
-                if (responseTimes.length > 0) {
-                  var avgResponse = responseTimes.reduce(function(a, b) { return a + b; }, 0) / responseTimes.length;
-                  var minutes = Math.round(avgResponse / 60000);
-                  document.getElementById('kpi-avg-response-time').textContent = minutes + ' min';
-                } else {
-                  document.getElementById('kpi-avg-response-time').textContent = '—';
-                }
-
-                if (resolutionTimes.length > 0) {
-                  var avgResolution = resolutionTimes.reduce(function(a, b) { return a + b; }, 0) / resolutionTimes.length;
-                  var hours = Math.round(avgResolution / 3600000 * 10) / 10;
-                  document.getElementById('kpi-avg-resolution-time').textContent = hours + 'h';
-                } else {
-                  document.getElementById('kpi-avg-resolution-time').textContent = '—';
-                }
-              }
-            })
-            .catch(function(err) {
-              processedCount++;
-              console.error('Errore calcolo tempi per sessione:', session.session_id, err);
-              if (processedCount === totalToProcess) {
-                if (responseTimes.length > 0) {
-                  var avgResponse = responseTimes.reduce(function(a, b) { return a + b; }, 0) / responseTimes.length;
-                  var minutes = Math.round(avgResponse / 60000);
-                  document.getElementById('kpi-avg-response-time').textContent = minutes + ' min';
-                } else {
-                  document.getElementById('kpi-avg-response-time').textContent = '—';
-                }
-              }
-            });
-        }
-      });
-    }
-
-    function calculateResolutionRate(totalEscalations, totalClosed) {
-      if (totalEscalations === 0) {
-        document.getElementById('kpi-resolution-rate').textContent = '0%';
-        return;
-      }
-      var rate = Math.round((totalClosed / totalEscalations) * 100);
-      document.getElementById('kpi-resolution-rate').textContent = rate + '%';
-    }
-
-    function calculateEscalationRate(totalEscalations, totalSessions) {
-      if (totalSessions === 0) {
-        document.getElementById('kpi-escalation-rate').textContent = '0%';
-        return;
-      }
-      var rate = Math.round((totalEscalations / totalSessions) * 100);
-      document.getElementById('kpi-escalation-rate').textContent = rate + '%';
+      // 5. Grafici
+      createEscalationTrendChart(sessions);
+      createChannelDistributionChart(sessions);
+      createPriorityDistributionChart(sessions);
+      
+      // Carica performance operatori (usando la vista specifica)
+      loadOperatorPerformanceFromView();
     }
 
     function createEscalationTrendChart(sessions) {
       var ctx = document.getElementById('chart-escalation-trend');
       if (!ctx) return;
 
-      // Raggruppa per giorno (ultimi 7 giorni)
       var last7Days = [];
       for (var i = 6; i >= 0; i--) {
         var date = new Date();
         date.setDate(date.getDate() - i);
         date.setHours(0, 0, 0, 0);
-        last7Days.push({
-          date: date,
-          count: 0
-        });
+        last7Days.push({ date: date, count: 0 });
       }
 
       sessions.forEach(function(s) {
-        if (s.stato === 'escalation') {
-          // Usa escalated_at se disponibile, altrimenti created_at
-          var escalationDate = s.escalated_at || s.created_at;
-          var sessionDate = new Date(escalationDate);
+        if (s.escalated_at) {
+          var sessionDate = new Date(s.escalated_at);
           sessionDate.setHours(0, 0, 0, 0);
           var day = last7Days.find(function(d) {
             return d.date.getTime() === sessionDate.getTime();
@@ -3251,97 +3149,30 @@
       var ctx = document.getElementById('chart-channel-distribution');
       if (!ctx) return;
 
-      var chatCount = 0;
-      var emailCount = 0;
-      var processedCount = 0;
-      var totalSessions = sessions.length;
+      var chatCount = sessions.filter(function(s) { return (s.canale || 'chat') === 'chat'; }).length;
+      var emailCount = sessions.filter(function(s) { return s.canale === 'email'; }).length;
 
-      if (totalSessions === 0) {
-        // Nessuna sessione, mostra grafico vuoto
-        if (insightsCharts.channelDist) {
-          insightsCharts.channelDist.destroy();
-        }
-        insightsCharts.channelDist = new Chart(ctx, {
-          type: 'doughnut',
-          data: {
-            labels: ['Chat', 'Email'],
-            datasets: [{
-              data: [0, 0],
-              backgroundColor: ['#2563eb', '#f59e0b']
-            }]
-          },
-          options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: {
-              legend: { position: 'bottom' }
-            }
-          }
-        });
-        return;
+      if (insightsCharts.channelDist) {
+        insightsCharts.channelDist.destroy();
       }
 
-      // Raccogli tutti i session_id
-      var sessionIds = sessions.map(function(s) { return s.session_id; });
-
-      // Carica tutti i canali in una query
-      supabase
-        .from('conversazioni')
-        .select('session_id, canale')
-        .in('session_id', sessionIds)
-        .order('created_at', { ascending: true })
-        .then(function(res) {
-          if (res.error || !res.data) {
-            console.error('Errore caricamento canali:', res.error);
-            return;
+      insightsCharts.channelDist = new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+          labels: ['Chat', 'Email'],
+          datasets: [{
+            data: [chatCount, emailCount],
+            backgroundColor: ['#2563eb', '#f59e0b']
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { position: 'bottom' }
           }
-
-          // Crea mappa session_id -> canale (primo messaggio per sessione)
-          var channelMap = {};
-          var seenSessions = {};
-          res.data.forEach(function(msg) {
-            if (!seenSessions[msg.session_id]) {
-              channelMap[msg.session_id] = msg.canale || 'chat';
-              seenSessions[msg.session_id] = true;
-            }
-          });
-
-          // Conta canali
-          sessions.forEach(function(s) {
-            var canale = channelMap[s.session_id] || 'chat';
-            if (canale === 'email') {
-              emailCount++;
-            } else {
-              chatCount++;
-            }
-          });
-
-          // Crea grafico
-          if (insightsCharts.channelDist) {
-            insightsCharts.channelDist.destroy();
-          }
-
-          insightsCharts.channelDist = new Chart(ctx, {
-            type: 'doughnut',
-            data: {
-              labels: ['Chat', 'Email'],
-              datasets: [{
-                data: [chatCount, emailCount],
-                backgroundColor: ['#2563eb', '#f59e0b']
-              }]
-            },
-            options: {
-              responsive: true,
-              maintainAspectRatio: false,
-              plugins: {
-                legend: { position: 'bottom' }
-              }
-            }
-          });
-        })
-        .catch(function(err) {
-          console.error('Errore creazione grafico canali:', err);
-        });
+        }
+      });
     }
 
     function createPriorityDistributionChart(sessions) {
@@ -3383,178 +3214,24 @@
       });
     }
 
-    function createOperatorPerformanceChart(sessions) {
-      // Questa funzione sarà implementata dopo loadOperatorPerformance
-      var ctx = document.getElementById('chart-operator-performance');
-      if (!ctx) return;
-
-      // Placeholder per ora
-      if (insightsCharts.operatorPerf) {
-        insightsCharts.operatorPerf.destroy();
-      }
-
-      insightsCharts.operatorPerf = new Chart(ctx, {
-        type: 'bar',
-        data: {
-          labels: [],
-          datasets: [{
-            label: 'Escalation Gestite',
-            data: [],
-            backgroundColor: '#2563eb'
-          }]
-        },
-        options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          plugins: {
-            legend: { display: false }
-          },
-          scales: {
-            y: { beginAtZero: true }
-          }
-        }
-      });
-    }
-
-    function loadOperatorPerformance(sessions) {
-      // Carica operatori e calcola performance usando operatore_id
+    function loadOperatorPerformanceFromView() {
       if (!currentNegozioId) return;
 
       supabase
-        .from('operatori')
-        .select('id, nome, email')
+        .from('vista_performance_operatori')
+        .select('*')
         .eq('negozio_id', currentNegozioId)
+        .order('escalation_gestite', { ascending: false })
         .then(function(res) {
-          if (res.error || !res.data) {
-            console.error('Errore caricamento operatori:', res.error);
+          if (res.error) {
+            console.error('Errore caricamento performance:', res.error);
             return;
           }
-
-          var operators = res.data;
-          var performance = [];
-          var operatorsProcessed = 0;
-
-          if (operators.length === 0) {
-            var tbody = document.getElementById('operator-performance-tbody');
-            tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; padding: 24px; color: var(--text-muted);">Nessun operatore disponibile</td></tr>';
-            return;
-          }
-
-          operators.forEach(function(op) {
-            // Filtra sessioni gestite da questo operatore (solo quelle chiuse)
-            var operatorSessions = sessions.filter(function(s) {
-              return s.operatore_id === op.id && s.stato === 'chiusa';
-            });
-
-            var responseTimes = [];
-            var resolutionTimes = [];
-            var totalEscalations = operatorSessions.length;
-            var resolvedEscalations = 0;
-
-            if (operatorSessions.length === 0) {
-              performance.push({
-                nome: op.nome || op.email,
-                escalationGestite: 0,
-                tempoRisposta: '—',
-                tempoRisoluzione: '—',
-                tassoRisoluzione: '—'
-              });
-              operatorsProcessed++;
-              if (operatorsProcessed === operators.length) {
-                renderPerformanceTable(performance);
-              }
-              return;
-            }
-
-            // Per ogni sessione, calcola i tempi
-            var sessionsProcessed = 0;
-            operatorSessions.forEach(function(session) {
-              if (!session.escalated_at) {
-                sessionsProcessed++;
-                if (sessionsProcessed === operatorSessions.length) {
-                  calculateOperatorMetrics();
-                }
-                return;
-              }
-
-              var escalationTime = new Date(session.escalated_at);
-              
-              // Carica messaggi per trovare prima risposta operatore
-              supabase
-                .from('conversazioni')
-                .select('created_at, ruolo')
-                .eq('session_id', session.session_id)
-                .order('created_at', { ascending: true })
-                .then(function(msgRes) {
-                  sessionsProcessed++;
-                  
-                  if (msgRes.data && msgRes.data.length > 0) {
-                    var firstOperatorMsg = msgRes.data.find(function(m) { return m.ruolo === 'operatore'; });
-                    
-                    if (firstOperatorMsg) {
-                      var responseTime = new Date(firstOperatorMsg.created_at) - escalationTime;
-                      if (responseTime > 0) {
-                        responseTimes.push(responseTime);
-                      }
-                    }
-
-                    // Tempo di risoluzione
-                    if (session.updated_at) {
-                      var resolutionTime = new Date(session.updated_at) - escalationTime;
-                      if (resolutionTime > 0) {
-                        resolutionTimes.push(resolutionTime);
-                        resolvedEscalations++;
-                      }
-                    }
-                  }
-
-                  if (sessionsProcessed === operatorSessions.length) {
-                    calculateOperatorMetrics();
-                  }
-                })
-                .catch(function(err) {
-                  sessionsProcessed++;
-                  console.error('Errore calcolo metriche operatore:', err);
-                  if (sessionsProcessed === operatorSessions.length) {
-                    calculateOperatorMetrics();
-                  }
-                });
-            });
-
-            function calculateOperatorMetrics() {
-              var avgResponse = responseTimes.length > 0
-                ? Math.round(responseTimes.reduce(function(a, b) { return a + b; }, 0) / responseTimes.length / 60000)
-                : null;
-              
-              var avgResolution = resolutionTimes.length > 0
-                ? Math.round(resolutionTimes.reduce(function(a, b) { return a + b; }, 0) / resolutionTimes.length / 3600000 * 10) / 10
-                : null;
-
-              var resolutionRate = totalEscalations > 0
-                ? Math.round((resolvedEscalations / totalEscalations) * 100)
-                : 0;
-
-              performance.push({
-                nome: op.nome || op.email,
-                escalationGestite: totalEscalations,
-                tempoRisposta: avgResponse !== null ? avgResponse + ' min' : '—',
-                tempoRisoluzione: avgResolution !== null ? avgResolution + 'h' : '—',
-                tassoRisoluzione: resolutionRate + '%'
-              });
-
-              operatorsProcessed++;
-              if (operatorsProcessed === operators.length) {
-                renderPerformanceTable(performance);
-              }
-            }
-          });
+          renderPerformanceTable(res.data || []);
         });
     }
 
     function renderPerformanceTable(performance) {
-      // Ordina per escalation gestite
-      performance.sort(function(a, b) { return b.escalationGestite - a.escalationGestite; });
-
       var tbody = document.getElementById('operator-performance-tbody');
       if (performance.length === 0) {
         tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; padding: 24px; color: var(--text-muted);">Nessun dato disponibile</td></tr>';
@@ -3566,15 +3243,14 @@
         var tr = document.createElement('tr');
         tr.innerHTML = [
           '<td><strong>' + escHtml(perf.nome) + '</strong></td>',
-          '<td>' + perf.escalationGestite + '</td>',
-          '<td>' + perf.tempoRisposta + '</td>',
-          '<td>' + perf.tempoRisoluzione + '</td>',
-          '<td>' + perf.tassoRisoluzione + '</td>'
+          '<td>' + perf.escalation_gestite + '</td>',
+          '<td>' + (perf.tempo_risposta_medio ? Math.round(perf.tempo_risposta_medio) + ' min' : '—') + '</td>',
+          '<td>' + (perf.tempo_risoluzione_medio ? Math.round(perf.tempo_risoluzione_medio * 10) / 10 + 'h' : '—') + '</td>',
+          '<td>' + (perf.tasso_risoluzione || 0) + '%' + '</td>'
         ].join('');
         tbody.appendChild(tr);
       });
 
-      // Aggiorna anche il grafico delle performance operatori
       updateOperatorPerformanceChart(performance);
     }
 
@@ -3582,10 +3258,9 @@
       var ctx = document.getElementById('chart-operator-performance');
       if (!ctx) return;
 
-      // Prendi i top 5 operatori
       var topOperators = performance.slice(0, 5);
       var labels = topOperators.map(function(p) { return p.nome.length > 15 ? p.nome.substring(0, 15) + '...' : p.nome; });
-      var data = topOperators.map(function(p) { return p.escalationGestite; });
+      var data = topOperators.map(function(p) { return p.escalation_gestite; });
 
       if (insightsCharts.operatorPerf) {
         insightsCharts.operatorPerf.destroy();
