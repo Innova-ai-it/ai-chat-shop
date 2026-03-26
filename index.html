@@ -5,6 +5,10 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Customer Service Dashboard</title>
+  <!-- Google Fonts: Inter -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <!-- Configurazione (carica prima dello script principale) -->
   <!-- config.js per sviluppo locale (opzionale, in .gitignore) -->
   <script src="config.js" onerror="console.log('config.js non trovato, uso config.prod.js')"></script>
@@ -28,26 +32,35 @@
 
     :root {
       --primary: #2563eb;
+      --primary-soft: rgba(37, 99, 235, 0.1);
       --primary-dark: #1d4ed8;
       --sidebar-w: 320px;
-      --header-h: 60px;
-      --bg: #f1f5f9;
+      --header-h: 64px;
+      --bg: #f8fafc;
       --surface: #ffffff;
+      --surface-glass: rgba(255, 255, 255, 0.8);
       --border: #e2e8f0;
-      --text: #1e293b;
+      --text: #0f172a;
       --text-muted: #64748b;
-      --success: #22c55e;
+      --success: #10b981;
       --danger: #ef4444;
       --warning: #f59e0b;
-      --escalation: #dc2626;
+      --escalation: #e11d48;
+      --radius-sm: 8px;
+      --radius-md: 12px;
+      --radius-lg: 16px;
+      --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+      --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+      --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
     }
 
     body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
       background: var(--bg);
       color: var(--text);
       height: 100vh;
       overflow: hidden;
+      -webkit-font-smoothing: antialiased;
     }
 
     /* ============================================================
@@ -254,14 +267,18 @@
     /* Header */
     #app-header {
       height: var(--header-h);
-      background: var(--surface);
+      background: var(--surface-glass);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
       border-bottom: 1px solid var(--border);
       display: flex;
       align-items: center;
-      padding: 0 20px;
+      padding: 0 24px;
       gap: 16px;
       flex-shrink: 0;
       z-index: 100;
+      position: sticky;
+      top: 0;
     }
 
     .header-logo {
@@ -1156,9 +1173,10 @@
 
     .chart-card {
       background: var(--surface);
-      border-radius: 14px;
-      padding: 20px;
+      border-radius: var(--radius-lg);
+      padding: 24px;
       border: 1px solid var(--border);
+      box-shadow: var(--shadow-sm);
     }
 
     .chart-card-header {
@@ -1220,6 +1238,146 @@
       font-size: 12px;
       background: var(--surface);
       cursor: pointer;
+    }
+    /* ============================================================
+       RESPONSIVE & MODERN POLISH
+    ============================================================ */
+    @media (max-width: 900px) {
+      :root {
+        --sidebar-w: 100%;
+      }
+
+      #app-header {
+        padding: 0 12px;
+        height: auto;
+        min-height: 60px;
+        flex-wrap: wrap;
+        padding-bottom: 8px;
+        gap: 8px;
+      }
+
+      .header-logo {
+        width: 100%;
+        margin-bottom: 4px;
+        padding-top: 8px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+
+      #header-tabs {
+        width: 100%;
+        order: 3;
+        overflow-x: auto;
+        padding-bottom: 4px;
+        -webkit-overflow-scrolling: touch;
+      }
+
+      #header-user {
+        margin-left: auto;
+        font-size: 12px;
+      }
+
+      #app-body {
+        position: relative;
+      }
+
+      #sidebar {
+        position: absolute;
+        inset: 0;
+        z-index: 50;
+        width: 100% !important;
+        transition: transform 0.3s ease;
+      }
+
+      #sidebar.hidden-mobile {
+        transform: translateX(-100%);
+        pointer-events: none;
+      }
+
+      #main-area {
+        width: 100%;
+      }
+
+      #conv-detail.visible {
+        position: absolute;
+        inset: 0;
+        background: var(--bg);
+        z-index: 60;
+      }
+
+      .insights-charts-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .insights-kpi-grid {
+        grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      }
+
+      .kpi-value {
+        font-size: 24px;
+      }
+
+      .modal-card {
+        padding: 24px 16px;
+      }
+
+      .negozi-table {
+        overflow-x: auto;
+      }
+
+      /* Back button for mobile */
+      #btn-back-to-list {
+        display: flex !important;
+      }
+    }
+
+    /* Professional UI Enhancements */
+    #btn-back-to-list {
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 8px;
+      margin-right: 8px;
+      background: var(--bg);
+      border: none;
+      border-radius: 50%;
+      cursor: pointer;
+      color: var(--text);
+    }
+
+    .kpi-card {
+      transition: transform 0.2s, box-shadow 0.2s;
+    }
+
+    .kpi-card:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.05);
+    }
+
+    .tab-btn {
+      white-space: nowrap;
+    }
+
+    #header-tabs::-webkit-scrollbar {
+      display: none;
+    }
+
+    #app-header {
+      box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+    }
+
+    .conv-item {
+      border-bottom: 1px solid rgba(0,0,0,0.03);
+    }
+
+    .conv-item.active {
+      background: #f0f7ff;
+      border-right-width: 4px;
+    }
+
+    .msg-bubble {
+      box-shadow: 0 1px 2px rgba(0,0,0,0.05);
     }
   </style>
 </head>
@@ -1353,6 +1511,9 @@
         </div>
         <div id="conv-detail">
           <div id="conv-info">
+            <button id="btn-back-to-list" title="Torna alla lista">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>
+            </button>
             <div id="conv-info-text">
               <div id="conv-info-email">—</div>
               <div id="conv-info-meta">—</div>
@@ -2210,6 +2371,11 @@
       document.getElementById('conv-placeholder').style.display = 'none';
       var detail = document.getElementById('conv-detail');
       detail.classList.add('visible');
+      
+      // Su mobile, nascondi la lista quando apri il dettaglio
+      if (window.innerWidth <= 900) {
+        document.getElementById('sidebar').classList.add('hidden-mobile');
+      }
 
       // Info cliente
       var emailLabel = sessione.email_cliente || sessione.nome_cliente || 'Cliente anonimo';
@@ -2879,6 +3045,36 @@
           insightsView.classList.remove('visible');
           loadAdminStats();
         }
+
+        // Gestione mobile state
+        if (window.innerWidth <= 900) {
+          if (tab === 'conversations') {
+            sidebar.classList.remove('hidden-mobile');
+            // Se c'è una sessione attiva, nascondi comunque la sidebar per mostrare il dettaglio
+            if (activeSession) {
+              sidebar.classList.add('hidden-mobile');
+            }
+          } else {
+            sidebar.classList.add('hidden-mobile');
+          }
+        }
+      });
+
+      // Back button listener per mobile
+      document.getElementById('btn-back-to-list').addEventListener('click', function() {
+        activeSession = null;
+        document.getElementById('conv-detail').classList.remove('visible');
+        document.getElementById('conv-placeholder').style.display = 'flex';
+        
+        // Su mobile nascondi il dettaglio e mostra la lista
+        if (window.innerWidth <= 900) {
+          document.getElementById('sidebar').classList.remove('hidden-mobile');
+        }
+        
+        // Update sidebar highlight
+        document.querySelectorAll('.conv-item').forEach(function (el) {
+          el.classList.remove('active');
+        });
       });
 
       // Filter buttons - stato
