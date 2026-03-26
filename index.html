@@ -1414,6 +1414,11 @@
             <div class="kpi-value" id="kpi-resolution-rate">—</div>
             <div class="kpi-change" id="kpi-resolution-change">—</div>
           </div>
+          <div class="kpi-card success">
+            <div class="kpi-label">🤖 Tasso di Automazione AI</div>
+            <div class="kpi-value" id="kpi-automation-rate">—</div>
+            <div class="kpi-change" id="kpi-automation-change">Risparmio tempo</div>
+          </div>
           <div class="kpi-card">
             <div class="kpi-label">💬 Volume Conversazioni</div>
             <div class="kpi-value" id="kpi-conversation-volume">—</div>
@@ -1428,6 +1433,11 @@
             <div class="kpi-label">📈 Tasso di Escalation</div>
             <div class="kpi-value" id="kpi-escalation-rate">—</div>
             <div class="kpi-change" id="kpi-escalation-rate-change">—</div>
+          </div>
+          <div class="kpi-card info">
+            <div class="kpi-label">⏱️ Tempo Risparmiato</div>
+            <div class="kpi-value" id="kpi-time-saved">—</div>
+            <div class="kpi-change">Efficienza AI</div>
           </div>
         </div>
 
@@ -1455,6 +1465,12 @@
             <div class="chart-card-header">Escalation per Priorità</div>
             <div class="chart-container">
               <canvas id="chart-priority-distribution"></canvas>
+            </div>
+          </div>
+          <div class="chart-card">
+            <div class="chart-card-header">Dettaglio Orario (24h)</div>
+            <div class="chart-container">
+              <canvas id="chart-hourly-distribution"></canvas>
             </div>
           </div>
         </div>
@@ -3053,6 +3069,7 @@
       var activeEscalations = sessions.filter(function(s) { return s.stato === 'escalation'; }).length;
       var historicalEscalations = sessions.filter(function(s) { return s.escalated_at !== null; }).length;
       var closedEscalations = sessions.filter(function(s) { return s.stato === 'chiusa' && s.escalated_at !== null; }).length;
+      var deflectedSessions = sessions.filter(function(s) { return s.escalated_at === null && s.stato === 'chiusa'; }).length;
 
       // 2. Aggiorna KPI Semplici
       document.getElementById('kpi-conversation-volume').textContent = totalSessions;
@@ -3075,6 +3092,14 @@
       var resRate = historicalEscalations > 0 ? Math.round((closedEscalations / historicalEscalations) * 100) : 0;
       document.getElementById('kpi-resolution-rate').textContent = resRate + '%';
 
+      // 5. Risparmio Tempo (Stima: 10 minuti per ogni sessione automatizzata)
+      var minutesSaved = deflectedSessions * 10;
+      var hoursSaved = minutesSaved / 60;
+      document.getElementById('kpi-time-saved').textContent = hoursSaved.toFixed(1) + 'h';
+
+      var automationRate = totalSessions > 0 ? Math.round((deflectedSessions / totalSessions) * 100) : 0;
+      document.getElementById('kpi-automation-rate').textContent = automationRate + '%';
+
       var escRate = totalSessions > 0 ? Math.round((historicalEscalations / totalSessions) * 100) : 0;
       document.getElementById('kpi-escalation-rate').textContent = escRate + '%';
 
@@ -3082,6 +3107,7 @@
       createEscalationTrendChart(sessions);
       createChannelDistributionChart(sessions);
       createPriorityDistributionChart(sessions);
+      createHourlyDistributionChart(sessions);
       
       // Carica performance operatori (usando la vista specifica)
       loadOperatorPerformanceFromView();
@@ -3209,6 +3235,50 @@
           },
           scales: {
             y: { beginAtZero: true }
+          }
+        }
+      });
+    }
+
+    function createHourlyDistributionChart(sessions) {
+      var ctx = document.getElementById('chart-hourly-distribution');
+      if (!ctx) return;
+
+      var hours = new Array(24).fill(0);
+      sessions.forEach(function(s) {
+        var date = new Date(s.created_at);
+        var hour = date.getHours();
+        hours[hour]++;
+      });
+
+      var labels = Array.from({ length: 24 }, function(_, i) { return i + ':00'; });
+
+      if (insightsCharts.hourlyDist) {
+        insightsCharts.hourlyDist.destroy();
+      }
+
+      insightsCharts.hourlyDist = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: labels,
+          datasets: [{
+            label: 'Volume Messaggi',
+            data: hours,
+            borderColor: '#8b5cf6',
+            backgroundColor: 'rgba(139, 92, 246, 0.1)',
+            fill: true,
+            tension: 0.4
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { display: false }
+          },
+          scales: {
+            y: { beginAtZero: true, ticks: { stepSize: 1 } },
+            x: { grid: { display: false } }
           }
         }
       });
