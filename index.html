@@ -2692,6 +2692,12 @@
       var sessione = allSessions.find(function (s) { return s.session_id === activeSession; });
       if (!sessione) return;
 
+      // Per canale email, usa fallback su session_id (normalmente coincide con l'email mittente)
+      var resolvedEmailCliente = sessione.email_cliente || null;
+      if ((currentCanale === 'email' || sessione.canale === 'email') && !resolvedEmailCliente) {
+        resolvedEmailCliente = (activeSession && activeSession.indexOf('@') > -1) ? activeSession : null;
+      }
+
       var payload = {
         session_id: activeSession,
         negozio_id: sessione.negozio_id,
@@ -2699,7 +2705,7 @@
         messaggio: msg,
         operatore_id: currentUser.id,
         operatore_nome: currentUserNome || 'Operatore',
-        email_cliente: sessione.email_cliente || null,
+        email_cliente: resolvedEmailCliente,
         chiudi: false
       };
       
@@ -2766,6 +2772,11 @@
       if (!sessione) return;
 
       // Usa il webhook per chiudere correttamente (così l'operatore può mandare un ultimo messaggio di chiusura se volesse)
+      var resolvedEmailCliente = sessione.email_cliente || null;
+      if ((currentCanale === 'email' || sessione.canale === 'email') && !resolvedEmailCliente) {
+        resolvedEmailCliente = (activeSession && activeSession.indexOf('@') > -1) ? activeSession : null;
+      }
+
       fetch(N8N_WEBHOOK_URL + '/webhook/risposta-operatore', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -2776,7 +2787,7 @@
           messaggio: '⚠️ Sessione chiusa dall\'operatore.',
           operatore_id: currentUser.id,
           operatore_nome: currentUserNome || 'Operatore',
-          email_cliente: sessione.email_cliente || null,
+          email_cliente: resolvedEmailCliente,
           chiudi: true
         })
       }).then(function() {
