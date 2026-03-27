@@ -1868,6 +1868,7 @@
     var messagesSubscription = null;
     var unreadCounts = {}; // session_id -> count
     var lastReadTimestamps = {}; // session_id -> timestamp
+    var sessionEmailSubjects = {}; // session_id -> ultimo oggetto usato per reply email
     var typingTimeout = null;
     var currentCanale = null; // canale della conversazione corrente
     var insightsCharts = {}; // oggetto per memorizzare i grafici Chart.js
@@ -2477,6 +2478,15 @@
       var emailFields = document.getElementById('reply-email-fields');
       if (currentCanale === 'email') {
         emailFields.style.display = 'block';
+        var subjectInput = document.getElementById('reply-subject');
+        if (subjectInput) {
+          var rememberedSubject = sessionEmailSubjects[sessione.session_id];
+          if (rememberedSubject) {
+            subjectInput.value = rememberedSubject;
+          } else if (!subjectInput.value || !subjectInput.value.trim()) {
+            subjectInput.value = 'Re: Assistenza clienti';
+          }
+        }
       } else {
         emailFields.style.display = 'none';
         document.getElementById('reply-subject').value = '';
@@ -2728,6 +2738,10 @@
           btn.disabled = false;
           btn.textContent = 'Invia risposta';
           if (data.success) {
+            if (currentCanale === 'email' && subjectInput && subjectInput.value.trim()) {
+              sessionEmailSubjects[activeSession] = subjectInput.value.trim();
+            }
+
             // Aggiorna la sessione con l'operatore_id se non è già impostato
             // Questo traccia quale operatore ha gestito questa escalation
             supabase
@@ -2749,7 +2763,6 @@
 
             input.value = '';
             input.style.height = 'auto';
-            if (subjectInput) subjectInput.value = '';
             showToast('Risposta inviata con successo');
             loadMessages(activeSession, sessione.negozio_id, true);
             loadConversations(); // Aggiorna sidebar per mostrare nuovo messaggio
