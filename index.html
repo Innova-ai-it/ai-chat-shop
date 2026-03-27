@@ -2695,9 +2695,11 @@
       var payload = {
         session_id: activeSession,
         negozio_id: sessione.negozio_id,
+        canale: currentCanale || sessione.canale || 'chat',
         messaggio: msg,
         operatore_id: currentUser.id,
         operatore_nome: currentUserNome || 'Operatore',
+        email_cliente: sessione.email_cliente || null,
         chiudi: false
       };
       
@@ -2770,8 +2772,11 @@
         body: JSON.stringify({
           session_id: activeSession,
           negozio_id: sessione.negozio_id,
+          canale: currentCanale || sessione.canale || 'chat',
           messaggio: '⚠️ Sessione chiusa dall\'operatore.',
           operatore_id: currentUser.id,
+          operatore_nome: currentUserNome || 'Operatore',
+          email_cliente: sessione.email_cliente || null,
           chiudi: true
         })
       }).then(function() {
